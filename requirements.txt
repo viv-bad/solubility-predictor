@@ -1,0 +1,11 @@
+torch>=2.0.0
+torch-geometric  # PyTorch extension library for GNNs
+rdkit            # Cheminformatics library
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+jupyter
+tensorboard
+tqdm
