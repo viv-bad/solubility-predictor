@@ -40,7 +40,7 @@ class MoleculeGraph:
             val: The feature value to encode
             feature_dict: Dictionary mapping feature names to possible values
 
-        Reuturns:
+        Returns:
             One-hot encoded feature vector
         """
 
@@ -62,13 +62,13 @@ class MoleculeGraph:
 
         features = []
 
-        feature += cls._one_hot_encoding(atom.GetAtomicNum(), cls.ATOM_FEATURES['atomic_num'])
-        feature += cls._one_hot_encoding(atom.GetDegree(), cls.ATOM_FEATURES['degree'])
-        feature += cls._one_hot_encoding(atom.GetFormalCharge(), cls.ATOM_FEATURES['formal_charge'])
-        feature += cls._one_hot_encoding(atom.GetChiralTag(), cls.ATOM_FEATURES['chiral_tag'])
-        feature += cls._one_hot_encoding(atom.GetHybridization(), cls.ATOM_FEATURES['hybridization'])
-        feature += cls._one_hot_encoding(atom.GetNumExplicitHs(), cls.ATOM_FEATURES['num_h'])
-        feature += cls._one_hot_encoding(atom.GetIsAromatic(), cls.ATOM_FEATURES['is_aromatic'])
+        features += cls._one_hot_encoding(atom.GetAtomicNum(), cls.ATOM_FEATURES['atomic_num'])
+        features += cls._one_hot_encoding(atom.GetDegree(), cls.ATOM_FEATURES['degree'])
+        features += cls._one_hot_encoding(atom.GetFormalCharge(), cls.ATOM_FEATURES['formal_charge'])
+        features += cls._one_hot_encoding(atom.GetChiralTag(), cls.ATOM_FEATURES['chiral_tag'])
+        features += cls._one_hot_encoding(atom.GetHybridization(), cls.ATOM_FEATURES['hybridization'])
+        features += cls._one_hot_encoding(atom.GetNumExplicitHs(), cls.ATOM_FEATURES['num_h'])
+        features += cls._one_hot_encoding(atom.GetIsAromatic(), cls.ATOM_FEATURES['is_aromatic'])
 
         return features
     
@@ -86,10 +86,10 @@ class MoleculeGraph:
 
         features = []
 
-        feature += cls._one_hot_encoding(bond.GetBondType(), cls.BOND_FEATURES['bond_type'])
-        feature += cls._one_hot_encoding(bond.GetIsConjugated(), cls.BOND_FEATURES['is_conjugated'])
-        feature += cls._one_hot_encoding(bond.IsInRing(), cls.BOND_FEATURES['is_in_ring'])
-        feature += cls._one_hot_encoding(bond.GetStereo(), cls.BOND_FEATURES['stereo'])
+        features += cls._one_hot_encoding(bond.GetBondType(), cls.BOND_FEATURES['bond_type'])
+        features += cls._one_hot_encoding(bond.GetIsConjugated(), cls.BOND_FEATURES['is_conjugated'])
+        features += cls._one_hot_encoding(bond.IsInRing(), cls.BOND_FEATURES['is_in_ring'])
+        features += cls._one_hot_encoding(bond.GetStereo(), cls.BOND_FEATURES['stereo'])
 
         return features
     
