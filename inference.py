@@ -246,7 +246,7 @@ def main():
         
         if args.visualize:
             img = predictor.visualize_molecule(args.smiles, save_path=args.viz_output)
-            if not args.vis_output:
+            if not args.viz_output:
                 img.show()
         
     elif args.csv:
