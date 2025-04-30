@@ -3,13 +3,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch_geometric.loader import DataLoader
-import matplotlib.pyplot as pl
+import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 
 from src.data.dataset import SolubilityDataset
-from src.models.gnn_model import SolubilityGNN
+from models.gnn_model import SolubilityGNN
 
 def train_model(data_path, batch_size=32, hidden_dim=64, num_layers=3, lr=0.001, epochs = 100, seed=42):
     """
