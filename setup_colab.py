@@ -41,20 +41,20 @@ else:
     cuda_suffix = "cpu"
 
 # Install PyG scatter and sparse dependencies
-print(f"Installing PyG dependencies for torch {torch.__version__} + {cuda_suffix}...")
-pyg_whl_url = f"https://data.pyg.org/whl/torch-{torch.__version__}+{cuda_suffix}.html"
-try:
-    subprocess.run(["pip", "install", "torch-scatter", "torch-sparse", "-f", pyg_whl_url, "-q"], check=True)
-    print("PyG dependencies installed successfully.")
-except subprocess.CalledProcessError as e:
-    print(f"Error installing PyG dependencies: {e}")
-    print("Please check the URL and compatibility: ", pyg_whl_url)
-    print("Attempting install without specific version link (might be slower or fail)...")
-    try:
-        subprocess.run(["pip", "install", "torch-scatter", "torch-sparse", "-q"], check=True)
-        print("Installed torch-scatter and torch-sparse without specific wheel URL.")
-    except subprocess.CalledProcessError as e2:
-        print(f"Failed to install torch-scatter/torch-sparse: {e2}. Training might fail.")
+# print(f"Installing PyG dependencies for torch {torch.__version__} + {cuda_suffix}...")
+# pyg_whl_url = f"https://data.pyg.org/whl/torch-{torch.__version__}+{cuda_suffix}.html"
+# try:
+#     subprocess.run(["pip", "install", "torch-scatter", "torch-sparse", "-f", pyg_whl_url, "-q"], check=True)
+#     print("PyG dependencies installed successfully.")
+# except subprocess.CalledProcessError as e:
+#     print(f"Error installing PyG dependencies: {e}")
+#     print("Please check the URL and compatibility: ", pyg_whl_url)
+#     print("Attempting install without specific version link (might be slower or fail)...")
+#     try:
+#         subprocess.run(["pip", "install", "torch-scatter", "torch-sparse", "-q"], check=True)
+#         print("Installed torch-scatter and torch-sparse without specific wheel URL.")
+#     except subprocess.CalledProcessError as e2:
+#         print(f"Failed to install torch-scatter/torch-sparse: {e2}. Training might fail.")
 
 # Check project root (simple check)
 project_root = "."
