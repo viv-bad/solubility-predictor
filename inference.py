@@ -3,13 +3,13 @@ import torch
 import argparse
 import pandas as pandas
 from rdkit import Chem
-from rdkit.Chem import Draw, AllChem
+from rdkit.Chem import Draw, AllChem, Descriptors
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
 
 from src.data.molecule_graph import MoleculeGraph
-from src.models.gnn_model import SolubilityGNN
+from models.gnn_model import SolubilityGNN
 
 class SolubilityPredictor:
     """Class for making solubility predictions using a pre-trained GNN model."""
@@ -56,7 +56,7 @@ class SolubilityPredictor:
             return {"error": "Invalid SMILES string"}
 
         # Convert SMILES to molecule graph
-        graph = MoleculeGraph.from_smiles(smiles)
+        graph = MoleculeGraph.smiles_to_graph(smiles)
         if graph is None:
             return {"error": f"Failed to create molecule graph: {smiles}"}
 
