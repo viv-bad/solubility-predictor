@@ -34,7 +34,7 @@ def train_model(data_path, batch_size=32, hidden_dim=64, num_layers=3, lr=0.001,
     print(f"Using device: {device}")
 
     # Load dataset
-    dataset = SolubilityDataset(root = data_path, csv_file = os.path.join(data_path, 'raw/solubility_dataset.csv'))
+    dataset = SolubilityDataset(root = data_path, csv_file = os.path.join(data_path, 'raw/solubility_data.csv'))
 
     # split dataset into train, validation and test sets
     train_idx, test_idx = train_test_split(
@@ -124,12 +124,12 @@ def train_model(data_path, batch_size=32, hidden_dim=64, num_layers=3, lr=0.001,
         
     # Plot training curve
     plt.figure(figsize=(10,6))
-    plt.plot(range(1, epochs+1), train_losses, label="Training Loss")
-    plt.plot(range(1, epochs+1), val_losses, label="Validation Loss")
+    plt.plot(range(1, epochs+1), train_losses, label="Training Loss")  # Added label
+    plt.plot(range(1, epochs+1), val_losses, label="Validation Loss")  # Added label
     plt.xlabel("Epochs")
     plt.ylabel("Loss (MSE)")
     plt.title("Training and Validation Loss")
-    plt.legend()
+    plt.legend()  # Now this will work correctly
     plt.savefig(os.path.join(data_path, '../models/training_curve.png'))
 
     # Load best model for eval
@@ -158,12 +158,12 @@ def train_model(data_path, batch_size=32, hidden_dim=64, num_layers=3, lr=0.001,
 
     # plot predictions vs actual
     plt.figure(figsize=(10,6))
-    plt.scatter(test_targets, test_preds, alpha=0.5)
-    plt.plot([min(test_targets), max(test_targets)], [min(test_targets), max(test_targets)], '--', color='red')
+    plt.scatter(test_targets, test_preds, alpha=0.5, label="Predictions")  # Added label
+    plt.plot([min(test_targets), max(test_targets)], [min(test_targets), max(test_targets)], '--', color='red', label="Ideal Fit")  # Added label
     plt.xlabel("Actual Solubility")
     plt.ylabel("Predicted Solubility")
     plt.title("Predictions vs Actual")
-    plt.legend()
+    plt.legend()  # Now this will work correctly
     plt.savefig(os.path.join(data_path, '../models/prediction_scatter.png'))
 
     return model
@@ -172,6 +172,3 @@ if __name__ == "__main__":
     # update this path to data dir
     data_path = "data"
     train_model(data_path, epochs=50)
-    
-    
-    
