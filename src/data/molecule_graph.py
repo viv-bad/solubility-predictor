@@ -98,25 +98,29 @@ class MoleculeGraph:
         """
         Convert a SMILES string to a PyTorch Geometric graph.
 
-        Args: 
+        Args:
             smiles: SMILES string of the molecule
 
         Returns:
-            PyTorch Geometric Data object
+            PyTorch Geometric Data object or None if parsing fails
         """
+        try:
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is None:
+                print(f"Warning: RDKit failed to parse SMILES: {smiles}. Skipping molecule.")
+                return None
 
-        # Parse SMILES string with RDKit
-        mol = Chem.MolFromSmiles(smiles)
+            # Sanitize molecule (optional, but can help fix some valence issues)
+            Chem.SanitizeMol(mol)
 
-        if mol is None:
+        except Exception as e:
+            print(f"Error processing SMILES '{smiles}': {e}. Skipping molecule.")
             return None
-        
+
         # get atom features
         atom_features = []
         for atom in mol.GetAtoms():
             atom_features.append(cls._atom_features(atom))
-
-        # convert to tensor
         x = torch.tensor(atom_features, dtype=torch.float)
 
         #get edge indices and features
@@ -124,34 +128,33 @@ class MoleculeGraph:
         edge_attrs = []
 
         for bond in mol.GetBonds():
-
             i = bond.GetBeginAtomIdx()
             j = bond.GetEndAtomIdx()
-
-            # add bidirectional edges
             edge_indices.append([i, j])
-            edge_indices.append([j, i])
+            edge_indices.append([j, i]) # Add bidirectional edges
 
-            # add bond features
-            bond_features = cls._bond_features(bond)
+            bond_features = cls._bond_features(bond) # This is now only called with valid bonds
             edge_attrs.append(bond_features)
             edge_attrs.append(bond_features)
 
-            
+
         # if no bonds, make dummy/empty edge tensors
-        if len(edge_indices) == 0: 
-            edge_index = torch.zeros((2,0), dtype=torch.long)
-            edge_attr = torch.zeros((0, len(cls._bond_features(None))), dtype=torch.float)
+        if not edge_attrs: # Check if edge_attrs list is empty
+            # Calculate bond feature dimension directly from the definition
+            bond_feature_dims = sum(len(v) for v in cls.BOND_FEATURES.values())
+            edge_index = torch.zeros((2, 0), dtype=torch.long)
+            edge_attr = torch.zeros((0, bond_feature_dims), dtype=torch.float)
         else:
+            # Convert lists to tensors
             edge_index = torch.tensor(edge_indices, dtype=torch.long).t().contiguous()
             edge_attr = torch.tensor(edge_attrs, dtype=torch.float)
-        
+
         # make PyTorch Geometric Data object
         data = Data(
             x=x,
             edge_index=edge_index,
             edge_attr=edge_attr,
-            smiles=smiles
+            smiles=smiles # Keep SMILES for reference if needed
         )
 
         return data

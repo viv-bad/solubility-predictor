@@ -34,7 +34,7 @@ def train_model(data_path, batch_size=32, hidden_dim=64, num_layers=3, lr=0.001,
     print(f"Using device: {device}")
 
     # Load dataset
-    dataset = SolubilityDataset(root = data_path, csv_file = os.path.join(data_path, 'raw/solubility_data.csv'))
+    dataset = SolubilityDataset(root = data_path, csv_file = os.path.join(data_path, 'raw/solubility_dataset.csv'))
 
     # split dataset into train, validation and test sets
     train_idx, test_idx = train_test_split(
