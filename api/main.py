@@ -149,24 +149,25 @@ async def visualize_molecule(smiles: str = Form(...)):
 @app.post("/predict-with-visualization")
 async def predict_with_visualization(smiles: str = Form(...)):
     """
-    Predict solubility and generate a visualization of a molecule in one call.
-
-    Returns prediction results and a base64 encoded image of the molecule.
+    Predict solubility and generate molecule visualization in one call.
+    
+    Returns prediction results and a base64-encoded image of the molecule.
     """
     try:
-        # validate SMILES
+        # Validate SMILES
         is_valid, _ = validate_smiles(smiles)
         if not is_valid:
             raise HTTPException(status_code=422, detail=f"Invalid SMILES string: {smiles}")
         
-        # make prediction
+        # Make prediction
         result = prediction_service.predict_solubility(smiles)
-
-        # generate molecule image
+        
+        # Generate molecule image
         img_str = smiles_to_base64_image(smiles)
         if img_str is None:
             logger.warning(f"Failed to generate molecule image for valid SMILES: {smiles}")
         else:
+            # Add image to result
             result["image"] = img_str
         
         return result
@@ -174,18 +175,13 @@ async def predict_with_visualization(smiles: str = Form(...)):
         raise
     except Exception as e:
         logger.error(f"Prediction with visualization error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to process prediction with visualization request: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process request: {str(e)}")
 
 @app.get("/sample-molecules")
-def get_sample_molecules():
-    """
-    Get a list of sample molecules with varying solubility levels.
+def get_sample_molecules_route():
+    """Get a list of sample molecules with varying solubility levels."""
+    return {"samples": get_sample_molecules()}
 
-    Returns a list of sample molecules with their names, SMILES strings, and solubility levels.
-    """
-    return {
-        "samples": get_sample_molecules()
-    }
 
 @app.get("/model-info")
 def get_model_info():
@@ -205,26 +201,22 @@ def get_model_info():
         raise HTTPException(status_code=500, detail=f"Failed to get model info: {str(e)}")
 
 @app.post("/validate-smiles")
-def validate_smiles(smiles: str = Form(...)):
+def validate_smiles_route(smiles: str = Form(...)):
     """
     Validate a SMILES string.
     
-    Returns whether the SMILES string is valid or not.
+    Returns whether the SMILES string is valid.
     """
-
     is_valid, mol = validate_smiles(smiles)
     if is_valid and mol is not None:
         return {
             "valid": True,
             "atom_count": mol.GetNumAtoms(),
             "bond_count": mol.GetNumBonds(),
-            "has_aromaticity": any(atom.GetIsAromatic() for atom in mol.GetAtoms()),
+            "has_aromaticity": any(atom.GetIsAromatic() for atom in mol.GetAtoms())
             # TODO: add more properties as needed
         }
-    else:
-        return {
-            "valid": False,
-        }
+    return {"valid": False}
 
 
 # TODO: consider pre-loading the model on app startup instead to avoid latency from first request to prediction endpoints - @app.on_event("startup")
