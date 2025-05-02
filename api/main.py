@@ -220,7 +220,23 @@ def validate_smiles_route(smiles: str = Form(...)):
 
 
 # TODO: consider pre-loading the model on app startup instead to avoid latency from first request to prediction endpoints - @app.on_event("startup")
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    logger.info("Starting up Molecular Solubility Prediction API")
+    try:
+        # Pre-load the model to catch any issues early
+        prediction_service.initialize()
+        logger.info("Model initialized successfully on startup")
+    except Exception as e:
+        logger.error(f"Error initializing model on startup: {str(e)}")
+        # Don't fail startup, just log the error
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources on shutdown."""
+    logger.info("Shutting down Molecular Solubility Prediction API")
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
