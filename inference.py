@@ -7,6 +7,7 @@ from rdkit.Chem import Draw, AllChem, Descriptors
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
+import pubchempy
 
 from src.data.molecule_graph import MoleculeGraph
 from models.gnn_model import SolubilityGNN
@@ -86,9 +87,16 @@ class SolubilityPredictor:
 
         # Interpret solubility
         solubility_level = self._interpret_solubility(prediction)
+        compounds = pubchempy.get_compounds(smiles, namespace="smiles")
+        match = ""
+        if compounds:
+            match = compounds[0]
+        else:
+            match = "No compound name match found"
 
         return {
             "smiles": smiles,
+            "compound_name": match.iupac_name,
             "predicted_solubility": prediction,
             "solubility_level": solubility_level,
             "mol_weight": mol_weight,

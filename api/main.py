@@ -38,6 +38,7 @@ class BatchSmilesInput(BaseModel):
 
 class PredictionOutput(BaseModel):
     smiles: str
+    compound_name: str
     predicted_solubility: float = Field(..., description="Predicted solubility in log(mol/L)")
     solubility_level: str # TODO: set to interface/type with list of solubility levels
     mol_weight: float
