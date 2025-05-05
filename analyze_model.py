@@ -10,9 +10,9 @@ from rdkit.Chem import Descriptors, Draw, AllChem
 import seaborn as sns
 from torch_geometric.loader import DataLoader
 
-from src.data.dataset import SolubilityDataset
-from src.models.gnn_model import SolubilityGNN
-from src.data.molecule_graph import MoleculeGraph
+from solpred.data.dataset import SolubilityDataset
+from solpred.models.gnn_model import SolubilityGNN
+from solpred.data.molecule_graph import MoleculeGraph
 from inference import SolubilityPredictor
 
 

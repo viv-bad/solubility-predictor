@@ -9,8 +9,8 @@ import io
 from PIL import Image
 import pubchempy
 
-from src.data.molecule_graph import MoleculeGraph
-from src.models.gnn_model import SolubilityGNN
+from solpred.data.molecule_graph import MoleculeGraph
+from solpred.models.gnn_model import SolubilityGNN
 
 class SolubilityPredictor:
     """Class for making solubility predictions using a pre-trained GNN model."""

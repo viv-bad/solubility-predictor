@@ -5,7 +5,7 @@ import torch
 from torch_geometric.data import Dataset, InMemoryDataset
 # Ensure the relative import works because fix_imports adds the project root to sys.path
 # and Python can find src.data.molecule_graph
-from .molecule_graph import MoleculeGraph # Keep this relative import
+from solpred.data.molecule_graph import MoleculeGraph 
 
 class SolubilityDataset(InMemoryDataset):
     """
