@@ -11,7 +11,7 @@ import seaborn as sns
 from torch_geometric.loader import DataLoader
 
 from src.data.dataset import SolubilityDataset
-from models.gnn_model import SolubilityGNN
+from src.models.gnn_model import SolubilityGNN
 from src.data.molecule_graph import MoleculeGraph
 from inference import SolubilityPredictor
 
