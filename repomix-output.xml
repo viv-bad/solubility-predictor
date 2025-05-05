@@ -1,0 +1,3499 @@
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: data
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+<additional_info>
+
+</additional_info>
+
+</file_summary>
+
+<directory_structure>
+api/
+  config.py
+  main.py
+  README.md
+  service.py
+  utils.py
+  validation.py
+notebooks/
+  solubility_prediction_colab.ipynb
+src/
+  solpred/
+    data/
+      dataset.py
+      explore.py
+      molecule_graph.py
+      test_graph.py
+    models/
+      gnn_model.py
+    train.py
+.gitignore
+analyze_model.py
+docker-compose.yml
+Dockerfile
+inference.py
+pyproject.toml
+README.md
+requirements.txt
+run_train.py
+setup_colab.py
+test_api.py
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="api/utils.py">
+import io
+import base64
+from rdkit import Chem
+from rdkit.Chem import Draw, AllChem
+from PIL import Image
+import logging
+
+logger = logging.getLogger(__name__)
+
+def validate_smiles(smiles):
+    """
+    Validate the SMILES string using RDKit. 
+        
+        Args:
+            smiles: SMILES string to validate
+        Returns:
+            tuple: (is_valid, molecule) where is_valid is a boolean and molecule is the RDKit molecule object if valid, or None
+    """
+
+    try:
+        mol = Chem.MolFromSmiles(smiles.strip())
+        return mol is not None, mol
+    except Exception as e:
+        logger.error(f"Error validating SMILES {smiles}: {str(e)}")
+        return False, None
+
+def get_molecule_image(mol, size=(400,300), highlight_atoms=None, highlight_bonds=None):
+    """
+    Generate an image of a molecule.
+
+    Args:
+        mol: RDKit molecule object
+        size: Image size as (width, height) tuple
+        highlight_atoms: List of atom indices to highlight
+        highlight_bonds: List of bond indices to highlight
+
+    Returns:
+        PIL Image object of the molecule
+    """
+    try:
+        # prep the molecule for drawing
+        mol = Chem.Mol(mol)
+        mol.RemoveAllConformers()
+        AllChem.Compute2DCoords(mol)
+
+        # draw the molecule
+        drawer = Draw.MolDraw2DCairo(*size)
+        if highlight_atoms:
+            drawer.DrawMolecule(mol, highlightAtoms=highlight_atoms if highlight_atoms else [], highlightBonds = highlight_bonds if highlight_bonds else [])
+        else:
+            drawer.DrawMolecule(mol)
+        drawer.FinishDrawing()
+
+        # convert to PIL image
+        png_data = drawer.GetDrawingText()
+        return Image.open(io.BytesIO(png_data))
+    except Exception as e:
+        logger.error(f"Error generating molecule image: {str(e)}")
+        raise
+
+def smiles_to_base64_image(smiles, size=(400,300)):
+    """
+    Convert a SMILES string to a base64 encoded image.
+
+    Args:
+        smiles: SMILES string to convert
+        size: Image size as (width, height) tuple
+        
+    Returns:
+        Base64 encoded image string of None on conversion failure
+    """
+    try:
+        # validate the smiles
+        is_valid, mol = validate_smiles(smiles)
+        if not is_valid or mol is None:
+            logger.warning(f"Invalid SMILES string: {smiles}")
+            return None
+        
+        # generate img
+        img = get_molecule_image(mol, size)
+
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        return img_base64
+    except Exception as e:
+        logger.error(f"Error converting SMILES to base64 image: {str(e)}")
+        return None
+        
+def get_sample_molecules():
+    """
+    Get a list of sample molecules with varying solubility levels.
+    
+    Returns:
+        List of dictionaries containing molecule information
+    """
+    return [
+        {"name": "Glucose", "smiles": "C(C1C(C(C(C(O1)O)O)O)O)O", "solubility_level": "Very High Solubility"},
+        {"name": "Caffeine", "smiles": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C", "solubility_level": "Moderate-High Solubility"},
+        {"name": "Aspirin", "smiles": "CC(=O)OC1=CC=CC=C1C(=O)O", "solubility_level": "Moderate Solubility"},
+        {"name": "Paracetamol", "smiles": "CC(=O)NC1=CC=C(C=C1)O", "solubility_level": "Moderate Solubility"},
+        {"name": "Ibuprofen", "smiles": "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O", "solubility_level": "Low Solubility"},
+        {"name": "Cholesterol", "smiles": "CC(C)CCCC(C)C1CCC2C1(CCC3C2CC=C4C3(CCC(C4)O)C)C", "solubility_level": "Very Low Solubility"}
+    ]
+</file>
+
+<file path="api/validation.py">
+# api/validation.py
+from rdkit import Chem
+from pydantic import BaseModel, Field, validator
+from typing import List, Dict, Any, Optional
+
+class SmilesInput(BaseModel):
+    """Model for single SMILES input."""
+    smiles: str = Field(..., description="SMILES string representation of the molecule")
+    
+    @validator('smiles')
+    def validate_smiles(cls, v):
+        """Validate that the SMILES string is valid."""
+        v = v.strip()
+        mol = Chem.MolFromSmiles(v)
+        if mol is None:
+            raise ValueError("Invalid SMILES string")
+        return v
+
+class BatchSmilesInput(BaseModel):
+    """Model for batch SMILES input."""
+    smiles_list: List[str] = Field(..., description="List of SMILES strings to predict")
+    
+    @validator('smiles_list')
+    def validate_smiles_list(cls, smiles_list):
+        """Check that the list contains at least one SMILES and validate each one."""
+        if not smiles_list:
+            raise ValueError("SMILES list cannot be empty")
+            
+        # Check for valid/invalid SMILES, but allow them through for more detailed reporting
+        for i, smiles in enumerate(smiles_list):
+            mol = Chem.MolFromSmiles(smiles.strip())
+            if mol is None:
+                # We don't raise an error here - instead we'll return invalid_smiles in the response
+                pass
+        
+        return [s.strip() for s in smiles_list]
+
+class SolubilityPrediction(BaseModel):
+    """Model for solubility prediction results."""
+    smiles: str
+    compound_name: str
+    predicted_solubility: float
+    solubility_level: str
+    mol_weight: float
+    logp: float
+    num_atoms: int
+    # Add any additional fields your model predicts
+
+class BatchPredictionResponse(BaseModel):
+    """Model for batch prediction response."""
+    predictions: List[Dict[str, Any]]
+    invalid_count: int
+    valid_count: int
+    invalid_smiles: Optional[List[str]]
+</file>
+
+<file path="notebooks/solubility_prediction_colab.ipynb">
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Molecular Solubility Prediction with Graph Neural Networks\n",
+    "\n",
+    "This notebook sets up the environment for running the modular solubility prediction project in Google Colab."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Clone the Repository\n",
+    "\n",
+    "First, clone your repository. Replace the URL with your actual repository URL."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Clone your repository\n",
+    "!git clone YOUR_REPOSITORY_URL\n",
+    "%cd YOUR_REPOSITORY_NAME"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Set Up the Project for Colab\n",
+    "\n",
+    "Run the setup script to install dependencies and fix import issues."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Create and run the setup script\n",
+    "%%writefile setup_colab.py\n",
+    "\"\"\"\n",
+    "Setup script to fix imports and directory structure for running in Google Colab.\n",
+    "Run this script after cloning your repository but before running train.py.\n",
+    "\"\"\"\n",
+    "\n",
+    "import os\n",
+    "import sys\n",
+    "import shutil\n",
+    "\n",
+    "# Install required packages\n",
+    "import subprocess\n",
+    "subprocess.run([\"pip\", \"install\", \"torch-geometric\", \"-q\"])\n",
+    "subprocess.run([\"pip\", \"install\", \"rdkit\", \"-q\"])\n",
+    "\n",
+    "# Get PyTorch version and determine correct CUDA version for PyG\n",
+    "import torch\n",
+    "print(f\"PyTorch version: {torch.__version__}\")\n",
+    "print(f\"CUDA available: {torch.cuda.is_available()}\")\n",
+    "\n",
+    "cuda_suffix = \"\"\n",
+    "if torch.cuda.is_available():\n",
+    "    cuda_version = torch.version.cuda\n",
+    "    cuda_suffix = f\"cu{cuda_version.replace('.', '')}\"\n",
+    "    print(f\"CUDA version: {cuda_version}\")\n",
+    "    print(f\"GPU device: {torch.cuda.get_device_name(0)}\")\n",
+    "else:\n",
+    "    cuda_suffix = \"cpu\"\n",
+    "\n",
+    "# Install PyG scatter and sparse dependencies\n",
+    "pyg_whl_url = f\"https://data.pyg.org/whl/torch-{torch.__version__}+{cuda_suffix}.html\"\n",
+    "subprocess.run([\"pip\", \"install\", \"torch-scatter\", \"torch-sparse\", \"-f\", pyg_whl_url])\n",
+    "\n",
+    "# Check if we're in the project root or need to go up one level\n",
+    "if os.path.exists(\"src\"):\n",
+    "    project_root = \".\"\n",
+    "else:\n",
+    "    project_root = \"..\"\n",
+    "\n",
+    "# Make sure required directories exist\n",
+    "os.makedirs(\"data/raw\", exist_ok=True)\n",
+    "os.makedirs(\"data/processed\", exist_ok=True)\n",
+    "os.makedirs(\"models\", exist_ok=True)\n",
+    "\n",
+    "# Create/update __init__.py files to enable imports\n",
+    "if not os.path.exists(\"src/__init__.py\"):\n",
+    "    with open(\"src/__init__.py\", \"w\") as f:\n",
+    "        f.write(\"# Enable imports from src\")\n",
+    "        \n",
+    "if not os.path.exists(\"src/data/__init__.py\"):\n",
+    "    with open(\"src/data/__init__.py\", \"w\") as f:\n",
+    "        f.write(\"# Enable imports from src.data\")\n",
+    "        \n",
+    "if not os.path.exists(\"src/models/__init__.py\"):\n",
+    "    with open(\"src/models/__init__.py\", \"w\") as f:\n",
+    "        f.write(\"# Enable imports from src.models\")\n",
+    "\n",
+    "# Create a fix_imports.py file in the root directory to modify Python's import system\n",
+    "with open(\"fix_imports.py\", \"w\") as f:\n",
+    "    f.write(\"\"\"\n",
+    "import sys\n",
+    "import os\n",
+    "\n",
+    "# Add the project root to Python path\n",
+    "sys.path.insert(0, os.path.abspath('.'))\n",
+    "\n",
+    "# Add src directories to Python path\n",
+    "sys.path.insert(0, os.path.abspath('./src'))\n",
+    "sys.path.insert(0, os.path.abspath('./src/data'))\n",
+    "sys.path.insert(0, os.path.abspath('./src/models'))\n",
+    "    \"\"\")\n",
+    "\n",
+    "# Create a sample solubility dataset if needed\n",
+    "if not os.path.exists(\"data/raw/solubility_dataset.csv\"):\n",
+    "    print(\"Creating sample solubility dataset...\")\n",
+    "    with open(\"data/raw/solubility_dataset.csv\", \"w\") as f:\n",
+    "        f.write(\"\"\"id,name,smiles,solubility\n",
+    "1,Glucose,C(C1C(C(C(C(O1)O)O)O)O)O,0.8\n",
+    "2,Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,-2.2\n",
+    "3,Aspirin,CC(=O)OC1=CC=CC=C1C(=O)O,-4.5\n",
+    "4,Ibuprofen,CC(C)CC1=CC=C(C=C1)C(C)C(=O)O,-7.5\n",
+    "5,Cholesterol,CC(C)CCCC(C)C1CCC2C1(CCC3C2CC=C4C3(CCC(C4)O)C)C,-12.5\n",
+    "6,Paracetamol,CC(=O)NC1=CC=C(C=C1)O,-1.5\n",
+    "7,Ampicillin,CC1(C(N2C(S1)C(C2=O)NC(=O)C(C3=CC=CC=C3)N)C(=O)O)C,-1.0\n",
+    "8,Benzene,C1=CC=CC=C1,-2.0\n",
+    "9,Toluene,CC1=CC=CC=C1,-2.7\n",
+    "10,Naphthalene,C1=CC2=CC=CC=C2C=C1,-3.6\"\"\")\n",
+    "\n",
+    "# Update train.py to fix import issues\n",
+    "try:\n",
+    "    with open(\"src/train.py\", \"r\") as f:\n",
+    "        train_content = f.read()\n",
+    "\n",
+    "    train_content_fixed = train_content.replace(\"from src.data.dataset import SolubilityDataset\", \n",
+    "                                           \"from dataset import SolubilityDataset\")\n",
+    "    train_content_fixed = train_content_fixed.replace(\"from src.models.gnn_model import SolubilityGNN\", \n",
+    "                                                    \"from gnn_model import SolubilityGNN\")\n",
+    "    train_content_fixed = train_content_fixed.replace(\"import matplotlib.pyplot as pl\", \n",
+    "                                                    \"import matplotlib.pyplot as plt\")\n",
+    "\n",
+    "    with open(\"src/train.py\", \"w\") as f:\n",
+    "        f.write(train_content_fixed)\n",
+    "    print(\"Fixed imports in train.py\")\n",
+    "except Exception as e:\n",
+    "    print(f\"Could not update train.py: {e}\")\n",
+    "\n",
+    "# Update dataset.py to fix import issues\n",
+    "try:\n",
+    "    with open(\"src/data/dataset.py\", \"r\") as f:\n",
+    "        dataset_content = f.read()\n",
+    "\n",
+    "    dataset_content_fixed = dataset_content.replace(\"from .molecule_graph import MoleculeGraph\", \n",
+    "                                                  \"from molecule_graph import MoleculeGraph\")\n",
+    "\n",
+    "    with open(\"src/data/dataset.py\", \"w\") as f:\n",
+    "        f.write(dataset_content_fixed)\n",
+    "    print(\"Fixed imports in dataset.py\")\n",
+    "except Exception as e:\n",
+    "    print(f\"Could not update dataset.py: {e}\")\n",
+    "\n",
+    "# Create a wrapper script for train.py that includes the import fixes\n",
+    "with open(\"run_train.py\", \"w\") as f:\n",
+    "    f.write(\"\"\"\n",
+    "# Import the fix_imports module to set up Python path\n",
+    "import fix_imports\n",
+    "\n",
+    "# Now run the training script\n",
+    "from src.train import train_model\n",
+    "\n",
+    "if __name__ == \"__main__\":\n",
+    "    # Call the train_model function with appropriate parameters\n",
+    "    data_path = \"data\"\n",
+    "    train_model(data_path, epochs=50)\n",
+    "    \"\"\")\n",
+    "\n",
+    "print(\"\\nSetup complete!\")\n",
+    "print(\"\\nTo run the training script, use: !python run_train.py\")\n",
+    "print(\"To test molecule visualization, use: !python -c \\\"import fix_imports; from test_graph import visualize_molecule_graph; visualize_molecule_graph('CC(=O)OC1=CC=CC=C1C(=O)O')\\\"\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Run the setup script\n",
+    "!python setup_colab.py"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Test Molecule Visualization\n",
+    "\n",
+    "Let's test if the molecule visualization works correctly."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Test molecule visualization\n",
+    "import sys\n",
+    "sys.path.insert(0, 'src/data')\n",
+    "import fix_imports\n",
+    "from src.data.test_graph import visualize_molecule_graph\n",
+    "\n",
+    "# Visualize aspirin\n",
+    "visualize_molecule_graph('CC(=O)OC1=CC=CC=C1C(=O)O')"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Run the Training Script\n",
+    "\n",
+    "Now we can run the training script with our fixed import structure."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Run the training script\n",
+    "!python run_train.py"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. Alternative: Run Directly from this Notebook\n",
+    "\n",
+    "You can also run the training directly from this notebook."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Import fix_imports to set up the Python path\n",
+    "import fix_imports\n",
+    "\n",
+    "# Import the train_model function\n",
+    "from src.train import train_model\n",
+    "\n",
+    "# Run training with GPU acceleration\n",
+    "model = train_model(\"data\", epochs=20, batch_size=64, hidden_dim=128)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.10"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
+</file>
+
+<file path="src/solpred/data/dataset.py">
+# file: src/data/dataset.py
+import os
+import pandas as pd
+import torch
+from torch_geometric.data import Dataset, InMemoryDataset
+# Ensure the relative import works because fix_imports adds the project root to sys.path
+# and Python can find src.data.molecule_graph
+from solpred.data.molecule_graph import MoleculeGraph 
+
+class SolubilityDataset(InMemoryDataset):
+    """
+    PyTorch Geometric dataset for molecular solubility prediction.
+    """
+
+    def __init__(self, root, csv_file, transform=None, pre_transform=None, pre_filter=None):
+        """
+        Args:
+            root (str): Root directory where the dataset should be saved.
+            csv_file (str): Path to the CSV file containing the SMILES and solubility data.
+            transform (callable, optional): Optional transform to be applied to each graph.
+            pre_transform (callable, optional): Optional transform to be applied to each graph before saving.
+            pre_filter (callable, optional): Optional filter to be applied to each graph before saving.
+        """
+
+        self.csv_file = csv_file
+        # Call super().__init__ BEFORE trying to load processed data
+        super().__init__(root, transform, pre_transform, pre_filter) # Pass log=True if needed
+
+        # Load the processed data, specifying weights_only=False
+        try:
+            self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False) # <--- ADD weights_only=False HERE
+        except FileNotFoundError:
+             # This case should ideally be handled by InMemoryDataset automatically triggering _process
+             # but good to be aware of.
+             print(f"Processed file not found at {self.processed_paths[0]}. Processing should trigger.")
+        except Exception as e:
+             print(f"Error loading processed file: {e}")
+             # Optionally raise the error or handle it appropriately
+             raise e
+
+
+    @property
+    def raw_file_names(self):
+        """
+        Returns a list of raw file names in the dataset. Assumes csv_file is in the raw_dir.
+        """
+        # Should return only the basename relative to raw_dir
+        return [os.path.basename(self.csv_file)]
+
+    @property
+    def processed_file_names(self):
+        """
+        Returns a list of processed file names in the dataset.
+        """
+        # This name should match what you save in process()
+        return ['solubility_data.pt']
+
+    def download(self):
+        """
+        Download the dataset if it doesn't exist in the raw directory.
+        Placeholder - implement if your raw data needs downloading.
+        Checks if the specific csv_file exists in raw_paths.
+        """
+        raw_path = os.path.join(self.raw_dir, self.raw_file_names[0])
+        if not os.path.exists(raw_path):
+            print(f"Raw file {raw_path} not found. Please place it manually or implement download().")
+            # Example: raise FileNotFoundError(f"Raw file not found: {raw_path}")
+            # Or attempt download here:
+            # download_url(url_to_your_data, self.raw_dir)
+            pass # Currently does nothing if file isn't there
+
+    def process(self):
+        """
+        Process the raw data and save it to the processed directory.
+        """
+        # Construct the full path to the raw CSV file
+        raw_path = os.path.join(self.raw_dir, self.raw_file_names[0])
+        print(f"Processing data from {raw_path}...")
+
+        try:
+            df = pd.read_csv(raw_path)
+        except FileNotFoundError:
+            print(f"Error: Raw data file not found at {raw_path}. Please ensure it exists.")
+            # Trigger download check or raise error
+            self.download() # Attempt download if implemented
+            # Re-try reading after potential download
+            try:
+                df = pd.read_csv(raw_path)
+            except FileNotFoundError:
+                 raise FileNotFoundError(f"Raw data file still not found after download attempt: {raw_path}")
+
+        data_list = []
+        num_processed = 0
+        num_skipped = 0
+        for idx, row in df.iterrows():
+            smiles = row['smiles']
+            try:
+                solubility = float(row['solubility'])
+            except (ValueError, TypeError):
+                 print(f"Warning: Invalid solubility value '{row['solubility']}' for SMILES {smiles} at index {idx}. Skipping.")
+                 num_skipped += 1
+                 continue
+
+            # Convert SMILES to graph
+            graph = MoleculeGraph.smiles_to_graph(smiles)
+
+            if graph is None:
+                # smiles_to_graph should print a warning internally if it returns None
+                num_skipped += 1
+                continue
+
+            # Add solubility as target
+            graph.y = torch.tensor([[solubility]], dtype=torch.float)
+            # Add optional ID if needed later
+            # graph.id = row['id'] # Uncomment if ID is needed
+
+            # Apply pre-filter and pre-transform if provided
+            if self.pre_filter is not None and not self.pre_filter(graph):
+                num_skipped += 1
+                continue
+            if self.pre_transform is not None:
+                graph = self.pre_transform(graph)
+
+            data_list.append(graph)
+            num_processed += 1
+
+        if not data_list:
+             raise ValueError("No valid molecules were processed from the input file. Check data and SMILES parsing.")
+
+        print(f"Successfully processed {num_processed} molecules, skipped {num_skipped}.")
+
+        # Collate and save
+        data, slices = self.collate(data_list)
+        save_path = self.processed_paths[0]
+        print(f"Saving processed data to {save_path}...")
+        torch.save((data, slices), save_path)
+        print("Processing complete.")
+</file>
+
+<file path="src/solpred/data/explore.py">
+import pandas as pd
+import numpy as np
+from rdkit import Chem
+from rdkit.Chem import Descriptors, Draw
+import matplotlib.pyplot as plt
+
+def explore_dataset(file_path):
+    """Explore and visualize the solubility dataset"""
+
+    data = pd.read_csv(file_path)
+
+    print(f"Dataset shape: {data.shape}")
+
+    print("\nColumn types:")
+    print(data.dtypes)
+    print("\n Summary statistics for solubility:")
+    print(data["solubility"].describe())
+
+    valid_smiles = 0
+    for smiles in data["smiles"]:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is not None:
+            valid_smiles += 1
+    
+    print(f"\nValid SMILES strings: {valid_smiles}/{len(data)}")
+
+    # Show example molecule
+    if len(data) > 0:
+        example_smiles = data["smiles"].iloc[0]
+        example_mol = Chem.MolFromSmiles(example_smiles)
+        if example_mol:
+            print(f"\nExample molecule (ID: {data['id'].iloc[0]}, name: {data['name'].iloc[0]}):")
+            print(f"SMILES: {example_smiles}")
+            print(f"Solubility: {data['solubility'].iloc[0]}")
+
+            # Calculate basic properties of example molecule
+            print("\nBasic properties:")
+            print(f"Molecular Weight: {Descriptors.MolWt(example_mol):.2f}")
+            print(f"LogP: {Descriptors.MolLogP(example_mol):.2f}")
+            print(f"Number of H-Bond Donors: {Descriptors.NumHDonors(example_mol)}")
+            print(f"Number of H-Bond Acceptors: {Descriptors.NumHAcceptors(example_mol)}")
+
+            # # Visualize molecule
+            Draw.MolToFile(example_mol, f"example_molecule.png")
+            print(f"\nMolecule saved as 'example_molecule.png'")
+            
+    
+    plt.figure(figsize=(10, 6))
+    plt.hist(data["solubility"], bins=20, edgecolor='black')
+    plt.title("Distribution of Solubility Values")
+    plt.xlabel("Solubility")
+    plt.ylabel("Frequency")
+    plt.grid(True, alpha=0.3)
+    plt.savefig("solubility_distribution.png")
+    plt.show()
+
+    return data
+    
+    
+
+
+
+
+if __name__ == "__main__":
+    data = explore_dataset("data/raw/solubility_dataset.csv")
+</file>
+
+<file path="src/solpred/data/molecule_graph.py">
+import torch
+from torch_geometric.data import Data
+from rdkit import Chem
+import numpy as np
+
+class MoleculeGraph:
+    """
+    Class for converting molecules to graph representations.
+    """
+    # Atom features for node representation
+    ATOM_FEATURES = {
+        'atomic_num': list(range(1, 119)), 
+        'degree': [0,1,2,3,4,5,6,7,8,9,10], # number of bonds
+        'formal_charge': [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5],
+        'chiral_tag': [0,1,2,3],
+        'hybridization': [Chem.rdchem.HybridizationType.SP, Chem.rdchem.HybridizationType.SP2, Chem.rdchem.HybridizationType.SP3, Chem.rdchem.HybridizationType.SP3D, Chem.rdchem.HybridizationType.SP3D2],
+        'num_h': [0,1,2,3,4,5,6,7,8], # number of hydrogens
+        'is_aromatic': [0,1]   
+    }
+
+    # Bond features for edge representation
+    BOND_FEATURES = {
+        'bond_type': [Chem.rdchem.BondType.SINGLE, Chem.rdchem.BondType.DOUBLE, Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.AROMATIC],
+        'is_conjugated': [0,1],
+        'is_in_ring': [0,1],
+        'stereo': [
+            Chem.rdchem.BondStereo.STEREONONE,
+            Chem.rdchem.BondStereo.STEREOANY,
+            Chem.rdchem.BondStereo.STEREOZ,
+            Chem.rdchem.BondStereo.STEREOE,
+        ]
+    }
+
+    @staticmethod
+    def _one_hot_encoding(val, feature_dict):
+        """
+        One-hot encode a feature value based on the feature dictionary.
+
+        Args:
+            val: The feature value to encode
+            feature_dict: Dictionary mapping feature names to possible values
+
+        Returns:
+            One-hot encoded feature vector
+        """
+
+        if val not in feature_dict:
+            return [0] * len(feature_dict)
+        return [1 if val == v else 0 for v in feature_dict]
+    
+    @classmethod
+    def _atom_features(cls, atom):
+        """
+        Extract atom features and encode them as a vector.
+
+        Args:
+            atom: RDKit atom object
+        
+        Returns:
+            Feature vector for the atom
+        """
+
+        features = []
+
+        features += cls._one_hot_encoding(atom.GetAtomicNum(), cls.ATOM_FEATURES['atomic_num'])
+        features += cls._one_hot_encoding(atom.GetDegree(), cls.ATOM_FEATURES['degree'])
+        features += cls._one_hot_encoding(atom.GetFormalCharge(), cls.ATOM_FEATURES['formal_charge'])
+        features += cls._one_hot_encoding(atom.GetChiralTag(), cls.ATOM_FEATURES['chiral_tag'])
+        features += cls._one_hot_encoding(atom.GetHybridization(), cls.ATOM_FEATURES['hybridization'])
+        features += cls._one_hot_encoding(atom.GetNumExplicitHs(), cls.ATOM_FEATURES['num_h'])
+        features += cls._one_hot_encoding(atom.GetIsAromatic(), cls.ATOM_FEATURES['is_aromatic'])
+
+        return features
+    
+    @classmethod
+    def _bond_features(cls, bond):
+        """
+        Extracts bond features and encodes them as a vector.
+
+        Args: 
+            bond: RDKit bond object
+        
+        Returns:
+            Feature vector for the bond
+        """
+
+        features = []
+
+        features += cls._one_hot_encoding(bond.GetBondType(), cls.BOND_FEATURES['bond_type'])
+        features += cls._one_hot_encoding(bond.GetIsConjugated(), cls.BOND_FEATURES['is_conjugated'])
+        features += cls._one_hot_encoding(bond.IsInRing(), cls.BOND_FEATURES['is_in_ring'])
+        features += cls._one_hot_encoding(bond.GetStereo(), cls.BOND_FEATURES['stereo'])
+
+        return features
+    
+    @classmethod
+    def smiles_to_graph(cls, smiles):
+        """
+        Convert a SMILES string to a PyTorch Geometric graph.
+
+        Args:
+            smiles: SMILES string of the molecule
+
+        Returns:
+            PyTorch Geometric Data object or None if parsing fails
+        """
+        try:
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is None:
+                print(f"Warning: RDKit failed to parse SMILES: {smiles}. Skipping molecule.")
+                return None
+
+            # Sanitize molecule (optional, but can help fix some valence issues)
+            Chem.SanitizeMol(mol)
+
+        except Exception as e:
+            print(f"Error processing SMILES '{smiles}': {e}. Skipping molecule.")
+            return None
+
+        # get atom features
+        atom_features = []
+        for atom in mol.GetAtoms():
+            atom_features.append(cls._atom_features(atom))
+        x = torch.tensor(atom_features, dtype=torch.float)
+
+        #get edge indices and features
+        edge_indices = []
+        edge_attrs = []
+
+        for bond in mol.GetBonds():
+            i = bond.GetBeginAtomIdx()
+            j = bond.GetEndAtomIdx()
+            edge_indices.append([i, j])
+            edge_indices.append([j, i]) # Add bidirectional edges
+
+            bond_features = cls._bond_features(bond) # This is now only called with valid bonds
+            edge_attrs.append(bond_features)
+            edge_attrs.append(bond_features)
+
+
+        # if no bonds, make dummy/empty edge tensors
+        if not edge_attrs: # Check if edge_attrs list is empty
+            # Calculate bond feature dimension directly from the definition
+            bond_feature_dims = sum(len(v) for v in cls.BOND_FEATURES.values())
+            edge_index = torch.zeros((2, 0), dtype=torch.long)
+            edge_attr = torch.zeros((0, bond_feature_dims), dtype=torch.float)
+        else:
+            # Convert lists to tensors
+            edge_index = torch.tensor(edge_indices, dtype=torch.long).t().contiguous()
+            edge_attr = torch.tensor(edge_attrs, dtype=torch.float)
+
+        # make PyTorch Geometric Data object
+        data = Data(
+            x=x,
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            smiles=smiles # Keep SMILES for reference if needed
+        )
+
+        return data
+</file>
+
+<file path="src/solpred/data/test_graph.py">
+import torch
+from rdkit import Chem
+from rdkit.Chem import Draw, AllChem
+import matplotlib.pyplot as plt  # Import pyplot as plt
+import numpy as np
+from molecule_graph import MoleculeGraph
+
+def visualize_molecule_graph(smiles):
+    """
+    Visualize a molecule and its graph representation.
+    
+    Args:
+        smiles: SMILES string of the molecule
+    """
+    # Parse SMILES string with RDKit
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        print(f"Failed to parse SMILES: {smiles}")
+        return
+    
+    # Convert to graph
+    graph = MoleculeGraph.smiles_to_graph(smiles)
+    
+    # Print graph info
+    print(f"SMILES: {smiles}")
+    print(f"Number of atoms (nodes): {graph.x.shape[0]}")
+    print(f"Number of bonds (edges): {graph.edge_index.shape[1] // 2}")  # Divide by 2 because edges are bidirectional
+    print(f"Node feature dimension: {graph.x.shape[1]}")
+    print(f"Edge feature dimension: {graph.edge_attr.shape[1]}")
+    
+    # Generate 2D coordinates for the molecule
+    mol = Chem.Mol(mol)  # Make a copy of the molecule
+    mol.RemoveAllConformers()  # Remove any existing conformers
+    AllChem.Compute2DCoords(mol)  # Compute 2D coordinates
+    
+    # Draw molecule
+    img = Draw.MolToImage(mol, size=(400, 300))
+    
+    # Create a simple visualization of the graph
+    plt.figure(figsize=(12, 6))
+    
+    # Subplot for the molecule
+    plt.subplot(1, 2, 1)
+    plt.imshow(img)
+    plt.title("RDKit Molecule Representation")
+    plt.axis('off')
+    
+    # Subplot for the graph
+    plt.subplot(1, 2, 2)
+    
+    # Get 2D coordinates from the generated conformer
+    pos = {}
+    conformer = mol.GetConformer()
+    for i, atom in enumerate(mol.GetAtoms()):
+        position = conformer.GetAtomPosition(i)
+        pos[i] = (position.x, position.y)
+    
+    # Plot nodes
+    for i in range(graph.x.shape[0]):
+        plt.plot(pos[i][0], pos[i][1], 'o', markersize=10, color='skyblue')
+        plt.text(pos[i][0], pos[i][1], f"{mol.GetAtomWithIdx(i).GetSymbol()}", 
+                 ha='center', va='center')
+    
+    # Plot edges
+    for i in range(0, graph.edge_index.shape[1], 2):  # Step by 2 to avoid duplicate edges
+        start_idx = graph.edge_index[0, i].item()
+        end_idx = graph.edge_index[1, i].item()
+        plt.plot([pos[start_idx][0], pos[end_idx][0]], 
+                 [pos[start_idx][1], pos[end_idx][1]], '-', color='gray')
+    
+    plt.title("Graph Representation")
+    plt.axis('equal')
+    plt.axis('off')
+    
+    plt.tight_layout()
+    molecule_name = mol.GetProp("_Name") if mol.HasProp("_Name") else "mol"
+    # plt.savefig(f'molecule_graph_{molecule_name}.png')
+    plt.show()
+    print(f"Visualization saved as molecule_graph_{molecule_name}.png")
+    # plt.close()
+
+if __name__ == "__main__":
+    # Test with examples from different solubility ranges
+    test_smiles = [
+        # High Solubility
+        "C(C1C(C(C(C(O1)O)O)O)O)O",  # Glucose
+        
+        # Moderate-High Solubility
+        "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",  # Caffeine
+        
+        # Moderate Solubility
+        "CC(=O)OC1=CC=CC=C1C(=O)O",  # Aspirin
+        
+        # Low Solubility
+        "CC(C)CC1=CC=C(C=C1)C(C)C(=O)O",  # Ibuprofen
+        
+        # Very Low Solubility
+        "CC(C)CCCC(C)C1CCC2C1(CCC3C2CC=C4C3(CCC(C4)O)C)C"  # Cholesterol
+    ]
+    
+    for smile in test_smiles:
+        visualize_molecule_graph(smile)
+        print("\n" + "-"*50 + "\n")
+</file>
+
+<file path="src/solpred/models/gnn_model.py">
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import MessagePassing
+from torch_geometric.nn import global_mean_pool, global_add_pool
+from torch_geometric.utils import add_self_loops, degree
+
+class GNNLayer(MessagePassing):
+    """
+    A custom Graph Neural Network layer with message passing.
+    """
+
+    def __init__(self, in_channels, out_channels):
+        # aggr will define how messages are aggregated (sum, mean, max etc)
+        super(GNNLayer, self).__init__(aggr='add')
+
+        # neural networks for transforming node and edge features
+        self.node_mlp = nn.Sequential(
+            nn.Linear(in_channels, out_channels),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(),
+            nn.Linear(out_channels, out_channels)
+        )
+
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(in_channels + 12, out_channels),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(),
+            nn.Linear(out_channels, out_channels)
+        )
+
+        # Update function for node features after message passing
+        self.update_mlp = nn.Sequential(
+            nn.Linear(in_channels + out_channels, out_channels),
+            nn.BatchNorm1d(out_channels),
+            nn.ReLU(),
+            nn.Linear(out_channels, out_channels)
+        )
+
+    def forward(self, x, edge_index, edge_attr):
+        """
+        Forward pass for the GNN layer.
+        """
+
+        # Add self loops to the adjacency matrix
+        edge_index, edge_attr = add_self_loops(
+            edge_index, edge_attr = edge_attr, fill_value=torch.zeros(1, edge_attr.shape[1], device=edge_index.device),
+            num_nodes = x.shape[0]
+        )
+
+        # start propagating the messages
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    def message(self, x_i, x_j, edge_attr):
+        #x_i: features of target nodes (shape: [num_edges, in_channels])
+        #x_j: features of source nodes (shape: [num_edges, in_channels])
+        #edge_attr: features of edges (shape: [num_edges, edge_feature_dim])
+
+        # combine the source node features with edge features
+        edge_features = torch.cat([x_j, edge_attr], dim=1)
+
+        # transform the edge features
+        edge_features = self.edge_mlp(edge_features)
+
+        # Return the message
+        return edge_features
+    
+    def update(self, aggr_out, x):
+        # aggr_out: aggregated messages (shape: [num_nodes, out_channels])
+        # x: original node features (shape: [num_nodes, in_channels])
+
+        # combine the aggregated messages with origiinal node features
+        node_features = torch.cat([x, aggr_out], dim = 1)
+
+        # Update node features
+        node_features = self.update_mlp(node_features)
+
+        return node_features
+
+
+class SolubilityGNN(nn.Module):
+    """
+    Graph Neural Network for solubility prediction.
+    """
+
+    def __init__(self, node_feature_dim = 160, edge_feature_dim = 12, hidden_dim = 64, num_layers=3, dropout=0.2):
+        super(SolubilityGNN, self).__init__()
+
+        # embedding layer to reduce dimensionality of node features
+        self.node_embedding = nn.Linear(node_feature_dim, hidden_dim)
+
+        # stack of GNN layers for message passing
+        self.gnn_layers = nn.ModuleList()
+        self.gnn_layers.append(GNNLayer(hidden_dim, hidden_dim))
+
+        for _ in range(num_layers - 1):
+            self.gnn_layers.append(GNNLayer(hidden_dim, hidden_dim))
+        
+        # Readout and prediction layers
+        self.readout_mlp = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim * 2), 
+            nn.BatchNorm1d(hidden_dim * 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1) # predict single value output - solubility
+        )
+
+
+    def forward(self, data):
+        # Get node features, edge indices, and edge features from data
+        x, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
+
+        # initial embedding of node features
+        x = self.node_embedding(x)
+
+        # apply GNN layers for message passing
+        for gnn_layer in self.gnn_layers:
+            x = gnn_layer(x, edge_index, edge_attr)
+
+            # after each layer, implement non linearity
+            x = F.relu(x)
+
+        # global pooling: combine node features for each graph in the batch
+        # to get a single feature vector per molecule
+        x = global_mean_pool(x, batch)
+
+        # final pred
+        solubility = self.readout_mlp(x)
+
+        return solubility
+</file>
+
+<file path="src/solpred/train.py">
+import os
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch_geometric.loader import DataLoader
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
+import argparse # <-- Add argparse
+
+# Assuming these imports are correct after restructuring
+from solpred.data.dataset import SolubilityDataset
+from solpred.models.gnn_model import SolubilityGNN
+
+# Define a clear output directory at the project root level
+DEFAULT_OUTPUT_DIR = "models" # Use the top-level models dir for artifacts
+
+def train_model(data_path, output_dir=DEFAULT_OUTPUT_DIR, batch_size=32, hidden_dim=64, num_layers=3, lr=0.001, epochs = 100, seed=42):
+    """
+    Train a GNN model for solubility prediction.
+
+    Args:
+        data_path: Path to the directory containing raw/processed data folders.
+        output_dir: Directory to save the trained model and plots.
+        # ... other args
+    """
+
+    # Set random seed for reproducibility
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    # Set device (GPU if available, otherwise CPU)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    # --- Ensure the output directory exists ---
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Saving outputs to: {os.path.abspath(output_dir)}") # Log absolute path for clarity
+
+    # Load dataset (use data_path for dataset loading)
+    dataset = SolubilityDataset(root = data_path, csv_file = os.path.join(data_path, 'raw/solubility_data.csv')) # Or your specific CSV file name
+
+    # split dataset into train, validation and test sets
+    # ... (rest of split logic remains the same) ...
+    train_idx, test_idx = train_test_split(
+        np.arange(len(dataset)), test_size=0.2, random_state=seed
+    )
+    train_idx, val_idx = train_test_split(
+        train_idx, test_size=0.25, random_state=seed
+    )
+
+    train_dataset = dataset[train_idx]
+    val_dataset = dataset[val_idx]
+    test_dataset = dataset[test_idx]
+
+    print(f"Training set size: {len(train_dataset)}")
+    print(f"Validation set size: {len(val_dataset)}")
+    print(f"Test set size: {len(test_dataset)}")
+
+
+    # Create data loaders
+    # ... (loader logic remains the same) ...
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    # Initialize model and move to device
+    # ... (model init remains the same) ...
+    model = SolubilityGNN(
+        node_feature_dim = train_dataset[0].x.shape[1],
+        edge_feature_dim=train_dataset[0].edge_attr.shape[1],
+        hidden_dim=hidden_dim,
+        num_layers=num_layers
+    ).to(device)
+
+    # define optimizer and loss fns
+    # ... (optimizer/loss remains the same) ...
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    loss_fn = nn.MSELoss()
+
+    # Training loop
+    train_losses, val_losses = [], []
+    best_val_loss = float('inf')
+
+    # --- Define best model path using output_dir ---
+    best_model_path = os.path.join(output_dir, 'best_model.pth')
+
+    for epoch in range(epochs):
+        # ... (training steps remain the same) ...
+        model.train()
+        train_loss = 0
+        for batch in train_loader:
+            batch = batch.to(device)
+            optimizer.zero_grad()
+            pred = model(batch)
+            loss = loss_fn(pred, batch.y)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item() * batch.num_graphs
+        train_loss /= len(train_dataset)
+        train_losses.append(train_loss)
+
+        # Validation
+        # ... (validation steps remain the same) ...
+        model.eval()
+        val_loss = 0
+        with torch.inference_mode():
+            for batch in val_loader:
+                batch = batch.to(device)
+                pred = model(batch)
+                loss = loss_fn(pred, batch.y)
+                val_loss += loss.item() * batch.num_graphs
+        val_loss /= len(val_dataset)
+        val_losses.append(val_loss)
+
+        print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+
+        # Save best model (using the updated best_model_path)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), best_model_path)
+            print(f"Best model saved to {best_model_path}")
+
+    # Plot training curve (saving to output_dir)
+    plt.figure(figsize=(10,6))
+    plt.plot(range(1, epochs+1), train_losses, label="Training Loss")
+    plt.plot(range(1, epochs+1), val_losses, label="Validation Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss (MSE)")
+    plt.title("Training and Validation Loss")
+    plt.legend()
+    # --- Save plot using output_dir ---
+    training_curve_path = os.path.join(output_dir, 'training_curve.png')
+    plt.savefig(training_curve_path)
+    print(f"Training curve saved to {training_curve_path}")
+    plt.close() # Close the plot to free memory
+
+    # Load best model for eval
+    model.load_state_dict(torch.load(best_model_path, map_location=device))
+
+    # evaluate on test set
+    # ... (evaluation logic remains the same) ...
+    model.eval()
+    test_preds, test_targets = [], []
+    with torch.inference_mode():
+        for batch in test_loader:
+            batch = batch.to(device)
+            pred = model(batch)
+            test_preds.append(pred.cpu())
+            test_targets.append(batch.y.cpu())
+    test_preds = torch.cat(test_preds, dim = 0).numpy()
+    test_targets = torch.cat(test_targets, dim=0).numpy()
+
+    # Calculate metrics
+    # ... (metric calculation remains the same) ...
+    rmse = np.sqrt(mean_squared_error(test_targets, test_preds))
+    r2 = r2_score(test_targets, test_preds)
+    print(f"\nTest Results:")
+    print(f"  RMSE: {rmse:.4f}")
+    print(f"  R2 Score: {r2:.4f}")
+
+    # plot predictions vs actual (saving to output_dir)
+    plt.figure(figsize=(8, 8)) # Make it square for better visualization
+    plt.scatter(test_targets, test_preds, alpha=0.5, label="Predictions", s=20) # Smaller points can be clearer
+    # Determine plot limits based on data range for a tighter fit
+    min_val = min(test_targets.min(), test_preds.min()) * 0.95
+    max_val = max(test_targets.max(), test_preds.max()) * 1.05
+    plt.plot([min_val, max_val], [min_val, max_val], '--', color='red', label="Ideal Fit (y=x)")
+    plt.xlabel("Actual Solubility")
+    plt.ylabel("Predicted Solubility")
+    plt.title("Test Set: Predicted vs Actual Solubility")
+    plt.xlim(min_val, max_val)
+    plt.ylim(min_val, max_val)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.gca().set_aspect('equal', adjustable='box') # Ensure square aspect ratio
+    # --- Save plot using output_dir ---
+    scatter_plot_path = os.path.join(output_dir, 'prediction_scatter.png')
+    plt.savefig(scatter_plot_path)
+    print(f"Prediction scatter plot saved to {scatter_plot_path}")
+    plt.close() # Close the plot
+
+    return model
+
+# --- Add main execution block with argparse ---
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a GNN model for solubility prediction.")
+    parser.add_argument("--data", type=str, default="./data", help="Path to the data directory (containing raw/processed subfolders)")
+    parser.add_argument("--output_dir", type=str, default=DEFAULT_OUTPUT_DIR, help="Directory to save trained model and plots")
+    parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
+    parser.add_argument("--hidden_dim", type=int, default=64, help="Hidden dimension size in GNN layers")
+    parser.add_argument("--num_layers", type=int, default=3, help="Number of GNN layers")
+    parser.add_argument("--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+
+    args = parser.parse_args()
+
+    print("Starting training process with arguments:")
+    print(f"  Data Path: {args.data}")
+    print(f"  Output Dir: {args.output_dir}")
+    print(f"  Epochs: {args.epochs}")
+    print(f"  Batch Size: {args.batch_size}")
+    print(f"  Learning Rate: {args.lr}")
+    # Add other args if needed
+
+    train_model(
+        data_path=args.data,
+        output_dir=args.output_dir,
+        batch_size=args.batch_size,
+        hidden_dim=args.hidden_dim,
+        num_layers=args.num_layers,
+        lr=args.lr,
+        epochs=args.epochs,
+        seed=args.seed
+    )
+    print("Training finished.")
+</file>
+
+<file path="pyproject.toml">
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=61.0"] # Specify minimum setuptools version
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solpred" # Choose a package name for your project
+version = "0.1.0" # Initial version
+description = "Molecular Solubility Prediction using GNNs"
+readme = "README.md"
+requires-python = ">=3.8" # Match your project's Python version requirement
+# Add other metadata like authors, license if desired
+
+# List core runtime dependencies here (subset of requirements.txt)
+# For now, keep it minimal or empty, as requirements.txt is still used.
+# You could gradually move dependencies here.
+dependencies = [
+    # "torch",
+    # "torch-geometric",
+    # "rdkit",
+    # "fastapi",
+    # "pydantic",
+    # "pydantic-settings",
+    # "uvicorn",
+    # Add other *essential* runtime deps
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]  # Look for packages in the 'src' directory
+</file>
+
+<file path="README.md">
+# SolPred
+
+## Overview
+
+SolPred is a tool for predicting the solubility of compounds in water.
+</file>
+
+<file path="test_api.py">
+#!/usr/bin/env python3
+"""
+Test script for the Molecular Solubility Prediction API.
+This script sends requests to the API endpoints and verifies the responses.
+"""
+import argparse
+import requests
+import json
+import base64
+from io import BytesIO
+from PIL import Image
+import sys
+import time
+import os
+
+def test_api(base_url):
+    """Test the API endpoints."""
+    print(f"Testing API at {base_url}...")
+    
+    # Test health endpoint
+    print("\n1. Testing health endpoint...")
+    try:
+        response = requests.get(f"{base_url}/health")
+        if response.status_code == 200:
+            print("✅ Health check passed")
+            print(f"Response: {json.dumps(response.json(), indent=2)}")
+        else:
+            print(f"❌ Health check failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Health check failed with error: {e}")
+        return False
+    
+    # Test sample molecules endpoint
+    print("\n2. Testing sample molecules endpoint...")
+    try:
+        response = requests.get(f"{base_url}/sample-molecules")
+        if response.status_code == 200:
+            data = response.json()
+            if "samples" in data and len(data["samples"]) > 0:
+                print(f"✅ Sample molecules endpoint passed. Found {len(data['samples'])} molecules")
+                # Save a sample for later use
+                sample_smiles = data["samples"][0]["smiles"]
+                sample_name = data["samples"][0]["name"]
+                print(f"Using sample molecule: {sample_name} ({sample_smiles})")
+            else:
+                print("❌ Sample molecules endpoint failed: No samples found")
+                return False
+        else:
+            print(f"❌ Sample molecules endpoint failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Sample molecules endpoint failed with error: {e}")
+        return False
+    
+    # Test predict endpoint
+    print("\n3. Testing predict endpoint...")
+    try:
+        response = requests.post(
+            f"{base_url}/predict",
+            json={"smiles": sample_smiles}
+        )
+        if response.status_code == 200:
+            prediction = response.json()
+            print("✅ Prediction endpoint passed")
+            print(f"Prediction for {sample_name}:")
+            print(f"  Solubility: {prediction['predicted_solubility']}")
+            print(f"  Level: {prediction['solubility_level']}")
+        else:
+            print(f"❌ Prediction endpoint failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Prediction endpoint failed with error: {e}")
+        return False
+    
+    # Test batch predict endpoint
+    print("\n4. Testing batch predict endpoint...")
+    try:
+        # Get multiple sample SMILES
+        batch_smiles = [sample["smiles"] for sample in data["samples"][:3]]
+        response = requests.post(
+            f"{base_url}/batch-predict",
+            json={"smiles_list": batch_smiles}
+        )
+        if response.status_code == 200:
+            batch_results = response.json()
+            if "predictions" in batch_results and len(batch_results["predictions"]) > 0:
+                print(f"✅ Batch prediction endpoint passed. Processed {len(batch_results['predictions'])} molecules")
+            else:
+                print("❌ Batch prediction endpoint failed: No predictions found")
+                return False
+        else:
+            print(f"❌ Batch prediction endpoint failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Batch prediction endpoint failed with error: {e}")
+        return False
+    
+    # Test visualize molecule endpoint
+    print("\n5. Testing visualize molecule endpoint...")
+    try:
+        response = requests.post(
+            f"{base_url}/visualize-molecule",
+            data={"smiles": sample_smiles}
+        )
+        if response.status_code == 200:
+            visualization = response.json()
+            if "image" in visualization:
+                print("✅ Visualization endpoint passed")
+                # Optionally save the image
+                try:
+                    image_data = base64.b64decode(visualization["image"])
+                    image = Image.open(BytesIO(image_data))
+                    image_path = f"{sample_name.lower().replace(' ', '_')}_visualization.png"
+                    image.save(image_path)
+                    print(f"Visualization saved to {image_path}")
+                except Exception as e:
+                    print(f"Warning: Could not save visualization: {e}")
+            else:
+                print("❌ Visualization endpoint failed: No image in response")
+                return False
+        else:
+            print(f"❌ Visualization endpoint failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Visualization endpoint failed with error: {e}")
+        return False
+    
+    # Test predict with visualization endpoint
+    print("\n6. Testing predict with visualization endpoint...")
+    try:
+        response = requests.post(
+            f"{base_url}/predict-with-visualization",
+            data={"smiles": sample_smiles}
+        )
+        if response.status_code == 200:
+            prediction_with_viz = response.json()
+            if "image" in prediction_with_viz and "predicted_solubility" in prediction_with_viz:
+                print("✅ Predict with visualization endpoint passed")
+            else:
+                print("❌ Predict with visualization endpoint failed: Incomplete response")
+                return False
+        else:
+            print(f"❌ Predict with visualization endpoint failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Predict with visualization endpoint failed with error: {e}")
+        return False
+    
+    # Test validate SMILES endpoint
+    print("\n7. Testing validate SMILES endpoint...")
+    try:
+        response = requests.post(
+            f"{base_url}/validate-smiles",
+            data={"smiles": sample_smiles}
+        )
+        if response.status_code == 200:
+            validation = response.json()
+            if "valid" in validation and validation["valid"]:
+                print("✅ Validate SMILES endpoint passed")
+            else:
+                print("❌ Validate SMILES endpoint failed: SMILES not validated")
+                return False
+        else:
+            print(f"❌ Validate SMILES endpoint failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Validate SMILES endpoint failed with error: {e}")
+        return False
+    
+    # Test model info endpoint
+    print("\n8. Testing model info endpoint...")
+    try:
+        response = requests.get(f"{base_url}/model-info")
+        if response.status_code == 200:
+            model_info = response.json()
+            if "model_info" in model_info:
+                print("✅ Model info endpoint passed")
+                print(f"Model info: {json.dumps(model_info['model_info'], indent=2)}")
+            else:
+                print("❌ Model info endpoint failed: No model info in response")
+                return False
+        else:
+            print(f"❌ Model info endpoint failed with status code: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Model info endpoint failed with error: {e}")
+        return False
+    
+    print("\n✅ All tests passed successfully!")
+    return True
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Test the Molecular Solubility Prediction API")
+    parser.add_argument("--url", type=str, default="http://localhost:8000", 
+                        help="Base URL of the API (default: http://localhost:8000)")
+    parser.add_argument("--wait", type=int, default=0,
+                        help="Wait for the specified number of seconds before starting tests")
+    args = parser.parse_args()
+    
+    # Wait if requested
+    if args.wait > 0:
+        print(f"Waiting {args.wait} seconds before starting tests...")
+        time.sleep(args.wait)
+    
+    # Run the tests
+    success = test_api(args.url)
+    
+    # Exit with appropriate status code
+    sys.exit(0 if success else 1)
+</file>
+
+<file path="api/README.md">
+# SolPred API
+
+This API provides endpoints for predicting the solubility of molecules from their SMILES representations. It uses a Graph Neural Network (GNN) trained on a solubility dataset.
+
+## Features
+
+- Predict solubility for a single molecule from SMILES string
+- Batch predictions for multiple molecules
+- Visualize the molecular structure
+- Combined prediction and visualization in a single request
+- Sample molecules with varying solubility levels
+- Model information and health checks
+
+## Installation
+
+### Prerequisites
+
+- Python 3.8+
+- RDKit
+- PyTorch
+- PyTorch Geometric
+
+### Setup
+
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/viv-bad/solubility-predictor.git
+   cd solubility-prediction
+   ```
+
+2. Install the required packages:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Make sure you have a trained model available at `data/models/best_model.pth`. If not, follow the instructions in the main README to train a model.
+
+## Running the API
+
+### Using the Python Script
+
+```bash
+docker compose build
+docker compose up
+```
+
+Options:
+
+- `--host`: Host to bind the server to (default: "0.0.0.0")
+- `--port`: Port to bind the server to (default: 8000)
+- `--reload`: Enable auto-reload for development
+- `--workers`: Number of worker processes (default: 1)
+- `--log-level`: Log level (choices: debug, info, warning, error, critical, default: info)
+
+### Using the Shell Script (Unix/Linux/Mac)
+
+```bash
+chmod +x run_api.sh  # Make the script executable (first time only)
+./run_api.sh
+```
+
+The shell script accepts the same options as the Python script.
+
+## API Endpoints
+
+Once the server is running, you can access the OpenAPI documentation at:
+
+```
+http://localhost:8000/docs
+```
+
+### Root Endpoint
+
+- **GET /** - Check if the API is running
+
+### Health Check
+
+- **GET /health** - Check the health of the API and the model
+
+### Prediction Endpoints
+
+- **POST /predict** - Predict solubility for a single molecule
+
+  - Request body: `{"smiles": "CC(=O)OC1=CC=CC=C1C(=O)O"}`
+
+- **POST /batch-predict** - Predict solubility for multiple molecules
+
+  - Request body: `{"smiles_list": ["CC(=O)OC1=CC=CC=C1C(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"]}`
+
+- **POST /visualize-molecule** - Generate a visualization of a molecule
+
+  - Form data: `smiles=CC(=O)OC1=CC=CC=C1C(=O)O`
+
+- **POST /predict-with-visualization** - Predict solubility and generate visualization
+  - Form data: `smiles=CC(=O)OC1=CC=CC=C1C(=O)O`
+
+### Utility Endpoints
+
+- **GET /sample-molecules** - Get a list of sample molecules with varying solubility levels
+
+- **GET /model-info** - Get information about the loaded model
+
+- **POST /validate-smiles** - Validate a SMILES string
+  - Form data: `smiles=CC(=O)OC1=CC=CC=C1C(=O)O`
+
+## Sample Usage with curl
+
+### Predict solubility for aspirin
+
+```bash
+curl -X 'POST' \
+  'http://localhost:8000/predict' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"smiles": "CC(=O)OC1=CC=CC=C1C(=O)O"}'
+```
+
+### Batch predict for multiple molecules
+
+```bash
+curl -X 'POST' \
+  'http://localhost:8000/batch-predict' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{"smiles_list": ["CC(=O)OC1=CC=CC=C1C(=O)O", "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"]}'
+```
+
+### Predict with visualization
+
+```bash
+curl -X 'POST' \
+  'http://localhost:8000/predict-with-visualization' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'smiles=CC(=O)OC1=CC=CC=C1C(=O)O'
+```
+
+## Python Client Example
+
+```python
+import requests
+import json
+import base64
+from PIL import Image
+import io
+
+# API endpoint
+API_URL = "http://localhost:8000"
+
+# Predict solubility for a single molecule
+def predict_solubility(smiles):
+    response = requests.post(
+        f"{API_URL}/predict",
+        json={"smiles": smiles}
+    )
+    return response.json()
+
+# Example usage
+smiles = "CC(=O)OC1=CC=CC=C1C(=O)O"  # Aspirin
+result = predict_solubility(smiles)
+print(f"Predicted solubility: {result['predicted_solubility']}")
+print(f"Solubility level: {result['solubility_level']}")
+
+# Predict with visualization
+def predict_with_visualization(smiles):
+    response = requests.post(
+        f"{API_URL}/predict-with-visualization",
+        data={"smiles": smiles}
+    )
+    result = response.json()
+
+    # Display the molecule image
+    if "image" in result:
+        image_data = base64.b64decode(result["image"])
+        image = Image.open(io.BytesIO(image_data))
+        image.show()
+
+    return result
+
+# Example usage
+result = predict_with_visualization("CN1C=NC2=C1C(=O)N(C(=O)N2C)C")  # Caffeine
+print(f"Predicted solubility: {result['predicted_solubility']}")
+print(f"Solubility level: {result['solubility_level']}")
+```
+</file>
+
+<file path="api/service.py">
+# api/service.py
+import os
+import logging
+from typing import List, Dict, Any, Union
+import torch
+
+# Fix imports to properly access the model
+import sys
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from inference import SolubilityPredictor
+from api.config import get_settings
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+class PredictionService:
+    """Service for handling molecular solubility predictions."""
+    
+    _instance = None
+    
+    def __new__(cls):
+        """Singleton pattern to ensure only one instance of the service exists."""
+        if cls._instance is None:
+            cls._instance = super(PredictionService, cls).__new__(cls)
+            cls._instance.predictor = None
+        return cls._instance
+    
+    def initialize(self, model_path=None):
+        """
+        Initialize the prediction service with a model.
+        
+        Args:
+            model_path: Path to the model file. If None, use the path from settings.
+        """
+        if self.predictor is not None:
+            logger.info("Predictor already initialized")
+            return
+        
+        settings = get_settings()
+        model_path = model_path or settings.MODEL_PATH
+        
+        logger.info(f"Initializing predictor with model: {model_path}")
+        try:
+            self.predictor = SolubilityPredictor(model_path)
+            logger.info("Predictor initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize predictor: {str(e)}")
+            raise RuntimeError(f"Failed to initialize predictor: {str(e)}")
+    
+    def get_predictor(self):
+        """Get the predictor, initializing it if necessary."""
+        if self.predictor is None:
+            self.initialize()
+        return self.predictor
+    
+    def predict_solubility(self, smiles: str) -> Dict[str, Any]:
+        """
+        Predict solubility for a molecule from SMILES string.
+        
+        Args:
+            smiles: SMILES string of the molecule
+            
+        Returns:
+            Dictionary containing prediction results
+        """
+        predictor = self.get_predictor()
+        return predictor.predict_from_smiles(smiles)
+    
+    def predict_batch(self, smiles_list: List[str]) -> List[Dict[str, Any]]:
+        """
+        Predict solubility for multiple molecules from SMILES strings.
+        
+        Args:
+            smiles_list: List of SMILES strings
+            
+        Returns:
+            List of dictionaries containing prediction results
+        """
+        predictor = self.get_predictor()
+        return predictor.predict_batch(smiles_list)
+    
+    def get_model_info(self) -> Dict[str, Any]:
+        """
+        Get information about the loaded model.
+        
+        Returns:
+            Dictionary containing model information
+        """
+        predictor = self.get_predictor()
+        model = predictor.model
+        
+        return {
+            "model_type": model.__class__.__name__,
+            "device": str(predictor.device),
+            "using_gpu": torch.cuda.is_available(),
+            "parameters": sum(p.numel() for p in model.parameters()),
+            "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad)
+        }
+
+# Create a singleton instance
+prediction_service = PredictionService()
+</file>
+
+<file path="Dockerfile">
+# Python 3.11 base image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libboost-all-dev \
+    # Add X11 libraries needed for RDKit's Draw functionality
+    libxrender1 \
+    libxext6 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching (external deps)
+COPY requirements.txt .
+
+# Install Python external dependencies
+# Consider adding --no-cache-dir if image size is critical
+RUN pip install -r requirements.txt
+
+# Copy the application code (including src/, pyproject.toml, api/, etc.)
+COPY . .
+
+# --- Add this line to install your 'solpred' package ---
+# This uses pyproject.toml to find and install the package from src/solpred
+RUN pip install .
+
+# Create required directories (if still needed, e.g., for model outputs/logs within container)
+# If models are read-only and copied in, this might not be needed.
+# RUN mkdir -p data/models # Adjust as needed
+
+# Expose the port on which the application will run
+EXPOSE 8000
+
+# Set environment variables (PYTHONPATH should NO LONGER be needed)
+# ENV PYTHONPATH=/app # REMOVE OR COMMENT OUT
+
+# Command to run the application
+CMD ["python", "-m", "api.main", "--host", "0.0.0.0", "--port", "8000"]
+</file>
+
+<file path="requirements.txt">
+absl-py==2.2.2
+aiohappyeyeballs==2.6.1
+aiohttp==3.11.18
+aiosignal==1.3.2
+annotated-types==0.7.0
+anyio==4.9.0
+appnope==0.1.4
+argon2-cffi==23.1.0
+argon2-cffi-bindings==21.2.0
+arrow==1.3.0
+asttokens==3.0.0
+async-lru==2.0.5
+attrs==25.3.0
+babel==2.17.0
+beautifulsoup4==4.13.4
+bleach==6.2.0
+certifi==2025.4.26
+cffi==1.17.1
+charset-normalizer==3.4.1
+click==8.1.8
+comm==0.2.2
+contourpy==1.3.2
+cycler==0.12.1
+debugpy==1.8.14
+decorator==5.2.1
+defusedxml==0.7.1
+dnspython==2.7.0
+email_validator==2.2.0
+executing==2.2.0
+fastapi==0.115.12
+fastapi-cli==0.0.7
+fastjsonschema==2.21.1
+filelock==3.18.0
+fonttools==4.57.0
+fqdn==1.5.1
+frozenlist==1.6.0
+fsspec==2025.3.2
+grpcio==1.71.0
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.6.4
+httpx==0.28.1
+idna==3.10
+ipykernel==6.29.5
+ipython==9.2.0
+ipython_pygments_lexers==1.1.1
+ipywidgets==8.1.6
+isoduration==20.11.0
+jedi==0.19.2
+Jinja2==3.1.6
+joblib==1.4.2
+json5==0.12.0
+jsonpointer==3.0.0
+jsonschema==4.23.0
+jsonschema-specifications==2025.4.1
+jupyter==1.1.1
+jupyter-console==6.6.3
+jupyter-events==0.12.0
+jupyter-lsp==2.2.5
+jupyter_client==8.6.3
+jupyter_core==5.7.2
+jupyter_server==2.15.0
+jupyter_server_terminals==0.5.3
+jupyterlab==4.4.1
+jupyterlab_pygments==0.3.0
+jupyterlab_server==2.27.3
+jupyterlab_widgets==3.0.14
+kiwisolver==1.4.8
+Markdown==3.8
+markdown-it-py==3.0.0
+MarkupSafe==3.0.2
+matplotlib==3.10.1
+matplotlib-inline==0.1.7
+mdurl==0.1.2
+mistune==3.1.3
+mpmath==1.3.0
+multidict==6.4.3
+nbclient==0.10.2
+nbconvert==7.16.6
+nbformat==5.10.4
+nest-asyncio==1.6.0
+networkx==3.4.2
+notebook==7.4.1
+notebook_shim==0.2.4
+numpy==2.2.5
+overrides==7.7.0
+packaging==25.0
+pandas==2.2.3
+pandocfilters==1.5.1
+parso==0.8.4
+pexpect==4.9.0
+pillow==11.2.1
+platformdirs==4.3.7
+prometheus_client==0.21.1
+prompt_toolkit==3.0.51
+propcache==0.3.1
+protobuf==6.30.2
+psutil==7.0.0
+ptyprocess==0.7.0
+PubChemPy==1.0.4
+pure_eval==0.2.3
+pycparser==2.22
+pydantic==2.11.4
+pydantic-settings==2.9.1
+pydantic_core==2.33.2
+Pygments==2.19.1
+pyparsing==3.2.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.1.0
+python-json-logger==3.3.0
+python-multipart==0.0.20
+pytz==2025.2
+PyYAML==6.0.2
+pyzmq==26.4.0
+rdkit==2024.9.6
+referencing==0.36.2
+requests==2.32.3
+rfc3339-validator==0.1.4
+rfc3986-validator==0.1.1
+rich==14.0.0
+rich-toolkit==0.14.4
+rpds-py==0.24.0
+scikit-learn==1.6.1
+scipy==1.15.2
+seaborn==0.13.2
+Send2Trash==1.8.3
+setuptools==80.0.0
+shellingham==1.5.4
+six==1.17.0
+sniffio==1.3.1
+soupsieve==2.7
+stack-data==0.6.3
+starlette==0.46.2
+sympy==1.14.0
+tensorboard==2.19.0
+tensorboard-data-server==0.7.2
+terminado==0.18.1
+threadpoolctl==3.6.0
+tinycss2==1.4.0
+torch==2.7.0
+torch-geometric==2.6.1
+torchvision==0.22.0
+tornado==6.4.2
+tqdm==4.67.1
+traitlets==5.14.3
+typer==0.15.3
+types-python-dateutil==2.9.0.20241206
+typing-inspection==0.4.0
+typing_extensions==4.13.2
+tzdata==2025.2
+uri-template==1.3.0
+urllib3==2.4.0
+uvicorn==0.34.2
+uvloop==0.21.0
+watchfiles==1.0.5
+wcwidth==0.2.13
+webcolors==24.11.1
+webencodings==0.5.1
+websocket-client==1.8.0
+websockets==15.0.1
+Werkzeug==3.1.3
+widgetsnbextension==4.0.14
+yarl==1.20.0
+</file>
+
+<file path="run_train.py">
+# run_train.py
+# This script ensures the Python path is set correctly before running the main training code.
+
+import argparse
+
+print("Importing fix_imports to set up sys.path...")
+import fix_imports # This executes the code in fix_imports.py
+
+print("Importing training function...")
+# Now that sys.path is fixed, this import should work
+from src.train import train_model
+
+if __name__ == "__main__":
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Train a model with specified parameters.')
+    parser.add_argument('--data_path', type=str, default='./data',
+                        help='Path to the data directory (default: ./data)')
+    parser.add_argument('--epochs', type=int, default=50,
+                        help='Number of training epochs (default: 50)')
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
+    print("Starting training process...")
+    # Call the train_model function with command line arguments
+    model = train_model(args.data_path, epochs=args.epochs)
+    print("Training finished.")
+</file>
+
+<file path="api/config.py">
+# api/config.py
+import os
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+class Settings(BaseSettings):
+    """API settings that can be overridden with environment variables."""
+    
+    # API Settings
+    API_TITLE: str = "Molecular Solubility Prediction API"
+    API_DESCRIPTION: str = "API for predicting molecular solubility from SMILES strings using a Graph Neural Network"
+    API_VERSION: str = "1.0.0"
+    DEBUG: bool = False
+    
+    # CORS Settings
+    ALLOW_ORIGINS: list = ["*", "http://localhost:3000", "http://frontend:3000"]
+    ALLOW_CREDENTIALS: bool = True
+    ALLOW_METHODS: list = ["*"]
+    ALLOW_HEADERS: list = ["*"]
+    
+    # Model Settings
+    MODEL_DIR: str = os.path.join("data")
+    MODEL_FILENAME: str = "best_model.pth"
+    
+    @property
+    def MODEL_PATH(self):
+        """Get the full path to the model file."""
+        return os.path.join(self.MODEL_DIR, self.MODEL_FILENAME)
+    
+    # Logging Settings
+    LOG_LEVEL: str = "INFO"
+    
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+@lru_cache()
+def get_settings():
+    """Get API settings, cached for performance."""
+    return Settings()
+</file>
+
+<file path="analyze_model.py">
+import os 
+import torch
+import argparse
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from rdkit import Chem
+from rdkit.Chem import Descriptors, Draw, AllChem
+import seaborn as sns
+from torch_geometric.loader import DataLoader
+
+from solpred.data.dataset import SolubilityDataset
+from solpred.models.gnn_model import SolubilityGNN
+from solpred.data.molecule_graph import MoleculeGraph
+from inference import SolubilityPredictor
+
+
+
+def analyze_embedding_space(model_path, data_path, output_dir="analysis_results"):
+    """
+    Analyze the learned embedding space of the GNN model using t-SNE visualization. 
+
+    Args:
+        model_path: Path to the saved trained model file
+        data_path: Path to the dataset file
+        output_dir: Directory to save the analysis results
+    """
+
+    # make output dirs if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # load dataset
+    dataset = SolubilityDataset(root=data_path, csv_file=os.path.join(data_path, 'raw/solubility_data.csv'))
+
+    # init predictor
+    predictor = SolubilityPredictor(model_path)
+    model = predictor.model
+    device = predictor.device
+
+    # create data loader
+    data_loader = DataLoader(dataset, batch_size=64, shuffle=False)
+
+    # extract embeddings and solubility values
+    embeddings = []
+    solubility_values = []
+    molecule_ids = []
+
+    model.eval()
+    with torch.inference_mode():
+        for batch in data_loader:
+            batch = batch.to(device)
+
+            #get node embeddings
+            x = model.node_embedding(batch.x)
+
+            # apply GNN layers to get node representations
+            for gnn_layer in model.gnn_layers:
+                x = gnn_layer(x, batch.edge_index, batch.edge_attr)
+                x = torch.relu(x)
+
+            # pool to get graph level embeddings
+            from torch_geometric.nn import global_mean_pool
+            graph_embedding = global_mean_pool(x, batch.batch)
+
+            #store embeddings and solubility values
+            embeddings.append(graph_embedding.cpu().numpy())
+            solubility_values.append(batch.y.cpu().numpy())
+            
+            # Check if id exists as an attribute, otherwise use index in dataset
+            if hasattr(batch, 'id'):
+                molecule_ids.extend([id.item() if hasattr(id, 'item') else id for id in batch.id])
+            else:
+                # Use smiles as fallback identifier
+                molecule_ids.extend(batch.smiles)
+
+    # concatenate embeddings and solubility values
+    embeddings = np.vstack(embeddings)
+    solubility_values = np.vstack(solubility_values).flatten()
+
+    # apply t-SNE to reduce dimensionality
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
+    embeddings_2d = tsne.fit_transform(embeddings)
+
+    df = pd.DataFrame({
+        'tsne_1': embeddings_2d[:, 0],
+        'tsne_2': embeddings_2d[:, 1],
+        'solubility': solubility_values,
+        'molecule_id': molecule_ids
+    })
+
+   # Visualize t-SNE plot colored by solubility
+    plt.figure(figsize=(12, 10))
+    scatter = plt.scatter(
+        df['tsne_1'], df['tsne_2'], 
+        c=df['solubility'], 
+        cmap='viridis', 
+        alpha=0.7, 
+        s=50
+    )
+    plt.colorbar(scatter, label='Solubility')
+    plt.title('t-SNE Visualization of Molecular Embeddings Colored by Solubility', fontsize=14)
+    plt.xlabel('t-SNE Dimension 1', fontsize=12)
+    plt.ylabel('t-SNE Dimension 2', fontsize=12)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'tsne_visualization.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"t-SNE visualization saved to {os.path.join(output_dir, 'tsne_visualization.png')}")
+    
+    # Save embeddings for further analysis
+    df.to_csv(os.path.join(output_dir, 'molecule_embeddings.csv'), index=False)
+    print(f"Embeddings saved to {os.path.join(output_dir, 'molecule_embeddings.csv')}")
+    
+    return df
+
+def analyze_error_patterns(model_path, data_path, output_dir="analysis_results"):
+    """
+    Analyze error patterns in the model's predictions.
+
+    Args:
+        model_path: Path to the saved trained model file
+        data_path: Path to the dataset file
+        output_dir: Directory to save the analysis results
+    
+    """
+
+    # create output dirs if doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # load dataset
+    dataset = SolubilityDataset(root=data_path, csv_file=os.path.join(data_path, 'raw/solubility_data.csv'))
+
+    # init predictor
+    predictor = SolubilityPredictor(model_path)
+
+    # create data loader
+    data_loader = DataLoader(dataset, batch_size=64, shuffle=False)
+
+    # make predictions and calculate errors
+    all_smiles = []
+    actual_values = []
+    predicted_values = []
+    molecule_ids = []
+
+    for batch in data_loader:
+        # get smiles strings
+        all_smiles.extend(batch.smiles)
+
+        # get actual solubility values
+        actual_values.extend(batch.y.cpu().numpy().flatten())
+
+        # Get molecule IDs if available, otherwise use smiles
+        if hasattr(batch, 'id'):
+            molecule_ids.extend([id.item() if hasattr(id, 'item') else id for id in batch.id])
+        else:
+            molecule_ids.extend(batch.smiles)
+
+        # make preds
+        batch_predictions = []
+        for smiles in batch.smiles:
+            result = predictor.predict_from_smiles(smiles)
+            batch_predictions.append(result['predicted_solubility'])
+        
+        predicted_values.extend(batch_predictions)
+
+    # calculate errors
+    errors = np.array(predicted_values) - np.array(actual_values)
+
+    # make dataframe for analysis
+    df = pd.DataFrame({
+        'id': molecule_ids,
+        'smiles': all_smiles,
+        'actual_solubility': actual_values,
+        'predicted_solubility': predicted_values,
+        'error': errors,
+        'abs_error': np.abs(errors)
+    })
+
+    # sort by absolute error to find worst predictions
+    df_sorted = df.sort_values('abs_error', ascending=False)
+
+    # save error analysis to csv
+    df_sorted.to_csv(os.path.join(output_dir, 'error_analysis.csv'), index=False)
+    print(f"Error analysis saved to {os.path.join(output_dir, 'error_analysis.csv')}")
+
+    # calculate molecular descriptors to correlate with errors
+    molecular_descriptors = []
+
+    for smiles in all_smiles:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is not None:
+            descriptors = {
+                'MolWt': Descriptors.MolWt(mol),
+                'LogP': Descriptors.MolLogP(mol),
+                'NumHDonors': Descriptors.NumHDonors(mol),
+                'NumHAcceptors': Descriptors.NumHAcceptors(mol),
+                'NumRotatableBonds': Descriptors.NumRotatableBonds(mol),
+                'NumAromaticRings': Descriptors.NumAromaticRings(mol),
+                'NumHeavyAtoms': mol.GetNumHeavyAtoms(),
+                'FractionCSP3': Descriptors.FractionCSP3(mol),
+                'TPSA': Descriptors.TPSA(mol)
+            }
+            molecular_descriptors.append(descriptors)
+        else:
+            # If molecule is invalid, add NaN values
+            descriptors = {
+                'MolWt': float('nan'),
+                'LogP': float('nan'),
+                'NumHDonors': float('nan'),
+                'NumHAcceptors': float('nan'),
+                'NumRotatableBonds': float('nan'),
+                'NumAromaticRings': float('nan'),
+                'NumHeavyAtoms': float('nan'),
+                'FractionCSP3': float('nan'),
+                'TPSA': float('nan')
+            }
+            molecular_descriptors.append(descriptors)
+    
+    # add descriptors to dataframe
+    descriptors_df = pd.DataFrame(molecular_descriptors)
+    df_with_descriptors = pd.concat([df, descriptors_df], axis = 1)
+
+    # Calculate correlation between errors and molecular descriptors
+    correlation_df = df_with_descriptors[['abs_error', 'MolWt', 'LogP', 'NumHDonors', 
+                                          'NumHAcceptors', 'NumRotatableBonds', 
+                                          'NumAromaticRings', 'NumHeavyAtoms', 
+                                          'FractionCSP3', 'TPSA']].corr()
+    
+    # Visualize correlation matrix
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(correlation_df, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+    plt.title('Correlation Between Prediction Errors and Molecular Descriptors', fontsize=14)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'error_correlation.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Error correlation matrix saved to {os.path.join(output_dir, 'error_correlation.png')}")
+    
+    # Visualize top 5 highest and lowest error molecules
+    visualize_extreme_molecules(df_sorted, output_dir)
+    
+    return df_with_descriptors
+
+def visualize_extreme_molecules(df_sorted, output_dir):
+    """
+    Visualize molecules with highest and lowest prediction errors.
+    
+    Args:
+        df_sorted: DataFrame sorted by absolute error
+        output_dir: Directory to save visualizations
+    """
+    # Create directory for molecule images
+    molecules_dir = os.path.join(output_dir, 'extreme_molecules')
+    os.makedirs(molecules_dir, exist_ok=True)
+    
+    # Get top 5 highest error molecules
+    highest_error = df_sorted.head(5)
+    
+    # Get top 5 lowest error molecules
+    lowest_error = df_sorted.tail(5)
+    
+    # Visualize highest error molecules
+    plt.figure(figsize=(15, 10))
+    for i, (_, row) in enumerate(highest_error.iterrows()):
+        mol = Chem.MolFromSmiles(row['smiles'])
+        if mol is not None:
+            mol = Chem.Mol(mol)
+            mol.RemoveAllConformers()
+            AllChem.Compute2DCoords(mol)
+            img = Draw.MolToImage(mol, size=(300, 300))
+            
+            plt.subplot(2, 5, i+1)
+            plt.imshow(img)
+            plt.title(f"Error: {row['error']:.2f}\nActual: {row['actual_solubility']:.2f}\nPred: {row['predicted_solubility']:.2f}")
+            plt.axis('off')
+    
+    # Visualize lowest error molecules
+    for i, (_, row) in enumerate(lowest_error.iterrows()):
+        mol = Chem.MolFromSmiles(row['smiles'])
+        if mol is not None:
+            mol = Chem.Mol(mol)
+            mol.RemoveAllConformers()
+            AllChem.Compute2DCoords(mol)
+            img = Draw.MolToImage(mol, size=(300, 300))
+            
+            plt.subplot(2, 5, i+6)
+            plt.imshow(img)
+            plt.title(f"Error: {row['error']:.2f}\nActual: {row['actual_solubility']:.2f}\nPred: {row['predicted_solubility']:.2f}")
+            plt.axis('off')
+    
+    plt.suptitle('Top 5 Highest vs Lowest Error Molecules', fontsize=16)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.9)
+    plt.savefig(os.path.join(output_dir, 'extreme_error_molecules.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    print(f"Extreme error molecules visualization saved to {os.path.join(output_dir, 'extreme_error_molecules.png')}")
+
+def analyze_node_importance(model_path, data_path, output_dir="analysis_results"):
+    """
+    Analyze the importance of different atom types and functional groups.
+    
+    Args:
+        model_path: Path to the saved model checkpoint
+        data_path: Path to the dataset
+        output_dir: Directory to save analysis results
+    """
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Load dataset
+    dataset = SolubilityDataset(root=data_path, csv_file=os.path.join(data_path, 'raw/solubility_data.csv'))
+    
+    # Initialize predictor and model
+    predictor = SolubilityPredictor(model_path)
+    model = predictor.model
+    device = predictor.device
+    
+    # Create a list of atom types to analyze
+    atom_types = [
+        ('Carbon', 'C', 6),
+        ('Nitrogen', 'N', 7),
+        ('Oxygen', 'O', 8),
+        ('Fluorine', 'F', 9),
+        ('Chlorine', 'Cl', 17),
+        ('Bromine', 'Br', 35),
+        ('Sulfur', 'S', 16),
+        ('Phosphorus', 'P', 15)
+    ]
+    
+    # Analyze a sample of molecules
+    sample_size = min(100, len(dataset))
+    sample_indices = np.random.choice(len(dataset), sample_size, replace=False)
+    sample_dataset = dataset[sample_indices]
+    
+    atom_importance_data = []
+    
+    for data in sample_dataset:
+        # Get SMILES string
+        smiles = data.smiles
+        
+        # Convert to molecule
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            continue
+        
+        # Get original prediction
+        original_result = predictor.predict_from_smiles(smiles)
+        original_prediction = original_result['predicted_solubility']
+        
+        # Analyze each atom type
+        for atom_name, atom_symbol, atomic_num in atom_types:
+            # Find atoms of this type
+            atom_indices = [atom.GetIdx() for atom in mol.GetAtoms() if atom.GetAtomicNum() == atomic_num]
+            
+            if not atom_indices:
+                continue
+            
+            # Create modified molecules by replacing atoms one by one
+            for atom_idx in atom_indices:
+                # We'll try to replace with silicon as a dummy substitution (element 14)
+                # This is just for demonstration - in practice, more sophisticated perturbations would be used
+                modified_mol = Chem.RWMol(mol)
+                modified_atom = modified_mol.GetAtomWithIdx(atom_idx)
+                original_type = modified_atom.GetAtomicNum()
+                
+                # Replace with silicon
+                modified_atom.SetAtomicNum(14)  # Silicon
+                modified_smiles = Chem.MolToSmiles(modified_mol)
+                
+                # Check if the modification resulted in a valid molecule
+                check_mol = Chem.MolFromSmiles(modified_smiles)
+                if check_mol is None:
+                    continue
+                
+                # Get prediction for modified molecule
+                try:
+                    modified_result = predictor.predict_from_smiles(modified_smiles)
+                    modified_prediction = modified_result['predicted_solubility']
+                    
+                    # Calculate importance as absolute change in prediction
+                    importance = abs(original_prediction - modified_prediction)
+                    
+                    # Store results
+                    atom_importance_data.append({
+                        'smiles': smiles,
+                        'atom_type': atom_name,
+                        'atom_idx': atom_idx,
+                        'original_prediction': original_prediction,
+                        'modified_prediction': modified_prediction,
+                        'importance': importance
+                    })
+                except Exception as e:
+                    print(f"Error processing modified molecule: {e}")
+    
+    # Convert to DataFrame
+    if atom_importance_data:
+        importance_df = pd.DataFrame(atom_importance_data)
+        
+        # Calculate average importance by atom type
+        avg_importance = importance_df.groupby('atom_type')['importance'].mean().reset_index()
+        avg_importance = avg_importance.sort_values('importance', ascending=False)
+        
+        # Visualize average importance by atom type
+        plt.figure(figsize=(10, 6))
+        sns.barplot(x='atom_type', y='importance', data=avg_importance)
+        plt.title('Average Importance of Atom Types for Solubility Prediction', fontsize=14)
+        plt.xlabel('Atom Type', fontsize=12)
+        plt.ylabel('Importance (Change in Prediction)', fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, 'atom_importance.png'), dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"Atom importance analysis saved to {os.path.join(output_dir, 'atom_importance.png')}")
+        
+        # Save importance data
+        importance_df.to_csv(os.path.join(output_dir, 'atom_importance.csv'), index=False)
+        print(f"Atom importance data saved to {os.path.join(output_dir, 'atom_importance.csv')}")
+        
+        return importance_df
+    else:
+        print("No valid atom importance data collected.")
+        return None
+
+    
+def main():
+    """Main function for command-line interface."""
+    parser = argparse.ArgumentParser(description="Analyze a trained GNN model for solubility prediction")
+    parser.add_argument("--model", type=str, required=True, help="Path to the trained model file")
+    parser.add_argument("--data", type=str, required=True, help="Path to the dataset directory")
+    parser.add_argument("--output", type=str, default="analysis_results", help="Path to save analysis results")
+    parser.add_argument("--embeddings", action="store_true", help="Analyze embedding space")
+    parser.add_argument("--errors", action="store_true", help="Analyze error patterns")
+    parser.add_argument("--importance", action="store_true", help="Analyze node importance")
+    parser.add_argument("--all", action="store_true", help="Run all analyses")
+    
+    args = parser.parse_args()
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(args.output, exist_ok=True)
+    
+    if args.all or args.embeddings:
+        print("\n=== Analyzing Embedding Space ===")
+        analyze_embedding_space(args.model, args.data, args.output)
+    
+    if args.all or args.errors:
+        print("\n=== Analyzing Error Patterns ===")
+        analyze_error_patterns(args.model, args.data, args.output)
+    
+    if args.all or args.importance:
+        print("\n=== Analyzing Node Importance ===")
+        analyze_node_importance(args.model, args.data, args.output)
+    
+    print("\nAnalysis complete. Results saved to", args.output)
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="docker-compose.yml">
+version: "3.8"
+
+services:
+  # Backend service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    # environment: # Remove or comment out PYTHONPATH if it was here
+    #   - PYTHONPATH=/app
+    volumes:
+      - ./data/models:/app/data/models # Mount only saved models if that's sufficient
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s # May need adjustment depending on model load time
+    networks:
+      - solubility-network
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./solubility-predictor-webapp # Ensure this context is correct
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NUXT_PUBLIC_API_BASE_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy # Wait for backend healthcheck to pass
+    restart: unless-stopped
+    networks:
+      - solubility-network
+
+networks:
+  solubility-network:
+    driver: bridge
+</file>
+
+<file path="setup_colab.py">
+# file: setup_colab.py
+"""
+Setup script to fix imports and directory structure for running in Google Colab.
+Run this script after cloning the repository but before running train.py.
+"""
+
+import os
+import sys
+import shutil
+import subprocess
+
+print("Starting Colab setup...")
+
+# Install required packages
+print("Installing torch-geometric and rdkit...")
+subprocess.run(["pip", "install", "torch-geometric", "rdkit", "-q"], check=True)
+print("Done.")
+
+# Get PyTorch version and determine correct CUDA version for PyG
+import torch
+print(f"PyTorch version: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+
+cuda_suffix = ""
+if torch.cuda.is_available():
+    try:
+        cuda_version = torch.version.cuda
+        # Ensure cuda_version is not None before replacing '.'
+        if cuda_version:
+            cuda_suffix = f"cu{cuda_version.replace('.', '')}"
+            print(f"CUDA version: {cuda_version}")
+            print(f"GPU device: {torch.cuda.get_device_name(0)}")
+        else:
+            print("CUDA version detection failed, defaulting to CPU.")
+            cuda_suffix = "cpu"
+    except Exception as e:
+        print(f"Error detecting CUDA version: {e}. Defaulting to CPU.")
+        cuda_suffix = "cpu"
+else:
+    print("CUDA not available, using CPU.")
+    cuda_suffix = "cpu"
+
+# Install PyG scatter and sparse dependencies
+# print(f"Installing PyG dependencies for torch {torch.__version__} + {cuda_suffix}...")
+# pyg_whl_url = f"https://data.pyg.org/whl/torch-{torch.__version__}+{cuda_suffix}.html"
+# try:
+#     subprocess.run(["pip", "install", "torch-scatter", "torch-sparse", "-f", pyg_whl_url, "-q"], check=True)
+#     print("PyG dependencies installed successfully.")
+# except subprocess.CalledProcessError as e:
+#     print(f"Error installing PyG dependencies: {e}")
+#     print("Please check the URL and compatibility: ", pyg_whl_url)
+#     print("Attempting install without specific version link (might be slower or fail)...")
+#     try:
+#         subprocess.run(["pip", "install", "torch-scatter", "torch-sparse", "-q"], check=True)
+#         print("Installed torch-scatter and torch-sparse without specific wheel URL.")
+#     except subprocess.CalledProcessError as e2:
+#         print(f"Failed to install torch-scatter/torch-sparse: {e2}. Training might fail.")
+
+# Check project root (simple check)
+project_root = "."
+if not os.path.exists(os.path.join(project_root, "src")):
+     print(f"Warning: 'src' directory not found in the current directory ({os.getcwd()}). Make sure you run this from the repository root.")
+
+# Make sure required directories exist
+print("Ensuring required directories exist...")
+os.makedirs(os.path.join(project_root, "data/raw"), exist_ok=True)
+os.makedirs(os.path.join(project_root, "data/processed"), exist_ok=True)
+os.makedirs(os.path.join(project_root, "models"), exist_ok=True)
+print("Done.")
+
+# Create/update __init__.py files to enable imports (Good Practice)
+print("Creating __init__.py files...")
+init_files = [
+    os.path.join(project_root, "src/__init__.py"),
+    os.path.join(project_root, "src/data/__init__.py"),
+    # Note: You don't have a src/models directory in your structure, the models dir is at the root
+    # os.path.join(project_root, "src/models/__init__.py") # Remove or adapt if structure changes
+]
+for init_file in init_files:
+    if not os.path.exists(init_file):
+        with open(init_file, "w") as f:
+            f.write(f"# Automatically created by setup_colab.py to enable package imports")
+print("Done.")
+
+# Create a fix_imports.py file in the root directory to modify Python's import system
+# This is the key part for making imports work without modifying source files
+print("Creating fix_imports.py...")
+fix_imports_path = os.path.join(project_root, "fix_imports.py")
+with open(fix_imports_path, "w") as f:
+    f.write("""
+# fix_imports.py
+import sys
+import os
+
+# Add the project root directory to the Python path
+project_root = os.path.abspath('.')
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+    print(f"Added project root to sys.path: {project_root}")
+
+# Optionally, add the 'src' directory itself if needed, though adding the root is usually sufficient
+# src_path = os.path.abspath('./src')
+# if src_path not in sys.path:
+#    sys.path.insert(0, src_path)
+#    print(f"Added src directory to sys.path: {src_path}")
+
+# You can verify the path includes your project root now
+# print("\\nCurrent sys.path:")
+# for p in sys.path:
+#     print(p)
+# print("-" * 20)
+    """)
+print(f"Created {fix_imports_path}")
+
+# Create a sample solubility dataset if needed
+sample_data_path = os.path.join(project_root, "data/raw/solubility_dataset.csv")
+if not os.path.exists(sample_data_path):
+    print(f"Creating sample solubility dataset at {sample_data_path}...")
+    with open(sample_data_path, "w") as f:
+        f.write("""id,name,smiles,solubility
+1,Glucose,C(C1C(C(C(C(O1)O)O)O)O)O,0.8
+2,Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C,-2.2
+3,Aspirin,CC(=O)OC1=CC=CC=C1C(=O)O,-4.5
+4,Ibuprofen,CC(C)CC1=CC=C(C=C1)C(C)C(=O)O,-7.5
+5,Cholesterol,CC(C)CCCC(C)C1CCC2C1(CCC3C2CC=C4C3(CCC(C4)O)C)C,-12.5
+6,Paracetamol,CC(=O)NC1=CC=C(C=C1)O,-1.5
+7,Ampicillin,CC1(C(N2C(S1)C(C2=O)NC(=O)C(C3=CC=CC=C3)N)C(=O)O)C,-1.0
+8,Benzene,C1=CC=CC=C1,-2.0
+9,Toluene,CC1=CC=CC=C1,-2.7
+10,Naphthalene,C1=CC2=CC=CC=C2C=C1,-3.6""")
+    print("Done.")
+else:
+    print(f"Dataset already exists at {sample_data_path}")
+
+# --- REMOVED THE SECTIONS THAT MODIFY train.py and dataset.py ---
+# The original imports in those files should now work when run
+# via the run_train.py wrapper or after importing fix_imports.
+
+# Create a wrapper script for train.py that includes the import fixes
+print("Creating run_train.py wrapper...")
+run_train_path = os.path.join(project_root, "run_train.py")
+with open(run_train_path, "w") as f:
+    f.write(f"""
+# run_train.py
+# This script ensures the Python path is set correctly before running the main training code.
+
+print("Importing fix_imports to set up sys.path...")
+import fix_imports # This executes the code in fix_imports.py
+
+print("Importing training function...")
+# Now that sys.path is fixed, this import should work
+from src.train import train_model
+
+if __name__ == "__main__":
+    print("Starting training process...")
+    # Call the train_model function with appropriate parameters
+    # Ensure data paths are relative to the project root
+    data_root_path = "{project_root}/data"
+    model = train_model(data_root_path, epochs=50) # Adjust epochs etc. as needed
+    print("Training finished.")
+    """)
+print(f"Created {run_train_path}")
+
+print("\nSetup complete!")
+print(f"\nTo run the training script, use: !python {run_train_path}")
+print(f"To test molecule visualization, use: !python -c \"import fix_imports; from src.data.test_graph import visualize_molecule_graph; visualize_molecule_graph('CC(=O)OC1=CC=CC=C1C(=O)O')\"")
+print(f"To run data exploration, use: !python -c \"import fix_imports; from src.data.explore import explore_dataset; explore_dataset('{project_root}/data/raw/solubility_dataset.csv')\"")
+</file>
+
+<file path=".gitignore">
+venv/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+
+# Translations
+*.mo
+
+# Mr Developer
+.mr.developer.cfg
+.project
+.pydevproject
+
+# Rope
+.ropeproject
+
+# Django stuff:
+*.log
+*.pot
+
+# Sphinx documentation
+docs/_build/
+
+# Environment variables
+.env
+
+# Data files
+# data/raw/
+
+.DS_Store
+/data/processed
+
+solubility-predictor-webapp
+</file>
+
+<file path="inference.py">
+import os
+import torch
+import argparse
+import pandas as pandas
+from rdkit import Chem
+from rdkit.Chem import Draw, AllChem, Descriptors
+import matplotlib.pyplot as plt
+import io
+from PIL import Image
+import pubchempy
+
+from solpred.data.molecule_graph import MoleculeGraph
+from solpred.models.gnn_model import SolubilityGNN
+
+class SolubilityPredictor:
+    """Class for making solubility predictions using a pre-trained GNN model."""
+
+    def __init__(self, model_path, node_feature_dim=160, edge_feature_dim=12, hidden_dim=64, num_layers=3):
+        """
+        Initialize the predictor with a trained model.
+
+        Args:
+            model_path: Path to the trained model file
+            node_feature_dim: Number of features for each node
+            edge_feature_dim: Number of features for each edge
+            hidden_dim: Number of hidden dimensions in the GNN
+            num_layers: Number of GNN layers
+        """
+
+        # Set device
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        print(f"Using device: {self.device}")
+
+        # Initialize model
+        self.model = SolubilityGNN(node_feature_dim=node_feature_dim, edge_feature_dim=edge_feature_dim, hidden_dim=hidden_dim, num_layers=num_layers).to(self.device)
+
+        # Load saved weights
+        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        self.model.eval()
+
+        print(f"Model loaded from model_path")
+
+    def predict_from_smiles(self, smiles):
+        """
+        Predict solubility from a SMILES string.
+
+        Args:
+            smiles: SMILES string of the molecule
+
+        Returns:
+            Dictionary containing the prediction and molecule information
+        """
+
+        # Check if smiles is valid
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return {"error": "Invalid SMILES string"}
+
+        # Convert SMILES to molecule graph
+        graph = MoleculeGraph.smiles_to_graph(smiles)
+        if graph is None:
+            return {"error": f"Failed to create molecule graph: {smiles}"}
+
+        # Move graph to device
+        x = graph.x.to(self.device)
+        edge_index = graph.edge_index.to(self.device)
+        edge_attr = graph.edge_attr.to(self.device)
+
+        # Create batch information (single molecule, so all nodes belong to batch 0)
+        batch = torch.zeros(x.size(0), dtype=torch.long).to(self.device)
+
+        # Create data object with the same structure expected by the model
+        data = type('', (), {})()
+        data.x = x
+        data.edge_index = edge_index
+        data.edge_attr = edge_attr
+        data.batch = batch
+
+        # Perform prediction
+        with torch.inference_mode():
+            prediction = self.model(data).item()
+        
+        # get molecule properties
+        mol_weight = Chem.Descriptors.MolWt(mol)
+        logp = Chem.Descriptors.MolLogP(mol)
+        num_atoms = mol.GetNumAtoms()
+
+        # Interpret solubility
+        solubility_level = self._interpret_solubility(prediction)
+        compounds = pubchempy.get_compounds(smiles, namespace="smiles")
+        match = ""
+        if compounds:
+            match = compounds[0]
+        else:
+            match = "No compound name match found"
+
+        return {
+            "smiles": smiles,
+            "compound_name": match.iupac_name,
+            "predicted_solubility": prediction,
+            "solubility_level": solubility_level,
+            "mol_weight": mol_weight,
+            "logp": logp,
+            "num_atoms": num_atoms
+        }
+
+    def predict_batch(self, smiles_list):
+        """
+        Predict solubility for a batch of SMILES strings.
+
+        Args:
+            smiles_list: List of SMILES strings
+
+        Returns:
+            List of dictionaries containing the prediction and molecule information for each SMILES string
+        """
+
+        results = []
+        for smiles in smiles_list:
+            results.append(self.predict_from_smiles(smiles))
+        return results
+
+    def predict_from_csv(self, csv_path, smiles_col="smiles", output_path=None):
+        """
+        Predict solubility for all SMILES in a CSV file.
+
+        Args:
+            csv_path: Path to the CSV file
+            smiles_col: Name of the column containing the SMILES strings
+            output_path: Path to save the output CSV file (optional)
+        
+        Returns:
+            DataFrame with original data and predictions
+        """
+
+        # Read CSV file
+        df = pandas.read_csv(csv_path)
+
+        if smiles_col not in df.columns:
+            raise ValueError(f"Column '{smiles_col}' not found in CSV file")
+        
+        # Get smiles from the specified column
+        smiles_list = df[smiles_col].tolist()
+        
+        results = []
+
+        for smiles in smiles_list:
+            results.append(self.predict_from_smiles(smiles))
+        
+        # Create output DataFrame
+        results_df = pd.DataFrame(results)
+
+        merged_df = pd.concat([df, results_df.drop(smiles_col, axis=1, errors='ignore')], axis=1)
+
+        if output_path:
+            merged_df.to_csv(output_path, index=False)
+            print(f"Results saved to {output_path}")
+        
+        return merged_df
+    
+    def _interpret_solubility(self, solubility_value):
+        """
+        Interpret numerical solubility value into a category. 
+
+        Args:
+            solubility_value: Predicted numerical solubility value (log scale)
+        
+        Returns:
+            String describing the solubility level
+        """
+
+        if solubility_value > 0:
+            return "Very High Solubility"
+        elif solubility_value > -2:
+            return "High Solubility"
+        elif solubility_value > -4:
+            return "Moderate Solubility"
+        elif solubility_value > -6:
+            return "Low Solubility"
+        else:
+            return "Very Low Solubility"
+    
+    def visualize_molecule(self, smiles, show_prediction=True, save_path=None):
+        """
+        Generate a visualisation of the molecule with its predicted solubility.
+
+        Args:
+            smiles: SMILES string of the molecule
+            show_prediction: Whether to display the predicted solubility
+            save_path: Path to save the image file (optional)
+        
+        Returns:
+            PIL Image object of the molecule
+        """
+
+        # Convert SMILES to molecule
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise ValueError(f"Invalid SMILES string: {smiles}")
+
+        # make prediction if requested
+        title = ""
+        if show_prediction:
+            result = self.predict_from_smiles(smiles)
+            title = f"Predicted Solubility: {result['predicted_solubility']:.2f} ({result['solubility_level']})"
+        
+        # Generate 2D coords for viz
+        mol = Chem.Mol(mol)
+        mol.RemoveAllConformers()
+        AllChem.Compute2DCoords(mol)
+
+        # draw molecule
+        fig, ax = plt.subplots(figsize=(10, 6))
+        img = Draw.MolToImage(mol, size=(400, 300))
+        ax.imshow(img)
+        ax.set_title(title)
+        ax.axis('off')
+
+        # save to file if requested
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight')
+            print(f"Molecule visualization saved to {save_path}")
+        
+        # convert to PIL image
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        img = Image.open(buf)
+        plt.close(fig)
+
+        return img
+        
+def main():
+    """Main function for command-line interface."""
+
+    parser = argparse.ArgumentParser(description="Predict molecular solubility using a trained GNN model.")
+    parser.add_argument("--model", type=str, required=True, help="Path to the trained model file")
+    parser.add_argument("--smiles", type=str, help="SMILES string of the molecule to predict")
+    parser.add_argument("--csv", type=str, help="Path to the CSV file containing SMILES strings")
+    parser.add_argument("--smiles_col", type=str, default="smiles", help="Name of the column containing SMILES strings in a csv (default: smiles)")
+    parser.add_argument("--output", type=str, help="Path to save the output CSV file")
+    parser.add_argument("--visualize", action="store_true", help="Generate and visualize molecule")
+    parser.add_argument("--viz_output", type=str, help="Path to save the visualization image")
+    args = parser.parse_args()
+
+    # Initialize predictor
+    predictor = SolubilityPredictor(args.model)
+
+    if args.smiles:
+        result = predictor.predict_from_smiles(args.smiles)
+        print("\nPrediction Result:")
+        for key, value in result.items():
+            print(f" {key}: {value}")
+        
+        if args.visualize:
+            img = predictor.visualize_molecule(args.smiles, save_path=args.viz_output)
+            if not args.viz_output:
+                img.show()
+        
+    elif args.csv:
+        results_df = predictor.predict_from_csv(args.csv, args.smiles_col, args.output)
+        print(f"\nFirst few predictions:")
+        print(results.df.head())
+        print(f"Total predictions: {len(results_df)}")
+    
+    else:
+        parser.print_help()
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="api/main.py">
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+import os
+import sys
+import tempfile
+import io
+import base64
+from PIL import Image
+import logging
+
+# Add project root to path to fix imports
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Import our modules
+from api.config import get_settings
+from api.validation import SmilesInput, BatchSmilesInput, SolubilityPrediction, BatchPredictionResponse
+from api.service import prediction_service
+from api.utils import validate_smiles, smiles_to_base64_image, get_sample_molecules
+
+# Setup logging
+settings = get_settings()
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title=settings.API_TITLE,
+    description=settings.API_DESCRIPTION,
+    version=settings.API_VERSION,
+    debug=settings.DEBUG
+)
+
+# Add CORS middleware to allow cross-origin requests from the frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOW_ORIGINS,
+    allow_credentials=settings.ALLOW_CREDENTIALS,
+    allow_methods=settings.ALLOW_METHODS,
+    allow_headers=settings.ALLOW_HEADERS,
+)
+
+@app.get("/")
+def read_root():
+    """Root endpoint to check if the API is running"""
+    return {"Message": "Molecular Solubility Prediction API is running"}
+
+@app.get("/health")
+def health_check():
+    """Health check endpoint."""
+    try:
+        # Check if model can be loaded
+        prediction_service.initialize()
+        # Get additional model info
+        model_info = prediction_service.get_model_info()
+        return {
+            "status": "healthy", 
+            "model_loaded": True,
+            "model_info": model_info
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"status": "unhealthy", "error": str(e)}
+        )
+
+@app.post("/predict", response_model=SolubilityPrediction)
+def predict_solubility(input_data: SmilesInput):
+    """
+    Predict solubility of a single molecule from SMILES string.
+
+    Returns prediction results including solubility value and molecular properties.
+    """
+    try:
+        # make prediction using service
+        result = prediction_service.predict_solubility(input_data.smiles)
+        logger.info(f"Prediction successful for {input_data.smiles}")
+        return result
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
+        raise HTTPException(status_code=422, detail=f"Invalid input: {str(e)}")
+    except Exception as e:
+        logger.error(f"Prediction error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+@app.post("/batch-predict", response_model=BatchPredictionResponse)
+def batch_predict(input_data: BatchSmilesInput):
+    """
+    Predict solubility for multiple molecules from a list of SMILES strings.
+    
+    Returns prediction results for each molecule in the batch.
+    """
+    try:
+        # Validate SMILES
+        invalid_smiles = []
+        valid_smiles = []
+        
+        for smiles in input_data.smiles_list:
+            is_valid, _ = validate_smiles(smiles)
+            if not is_valid:
+                invalid_smiles.append(smiles)
+            else:
+                valid_smiles.append(smiles)
+        
+        if invalid_smiles:
+            logger.warning(f"Found {len(invalid_smiles)} invalid SMILES strings")
+            
+        # Make batch prediction for valid SMILES
+        if valid_smiles:
+            results = prediction_service.predict_batch(valid_smiles)
+            logger.info(f"Batch prediction successful for {len(valid_smiles)} molecules")
+        else:
+            results = []
+            
+        return {
+            "predictions": results,
+            "invalid_count": len(invalid_smiles),
+            "valid_count": len(valid_smiles),
+            "invalid_smiles": invalid_smiles if invalid_smiles else None
+        }
+    except Exception as e:
+        logger.error(f"Batch prediction error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
+
+@app.post("/visualize-molecule")
+async def visualize_molecule(smiles: str = Form(...)):
+    """
+    Generate a visualization of a molecule from SMILES string.
+
+    Returns a base64 encoded image of the molecule.
+    """
+    try:
+        # convert SMILES to base64 
+        img_str = smiles_to_base64_image(smiles)
+        if img_str is None:
+            raise HTTPException(status_code=422, detail=f"Invalid SMILES string: {smiles}")
+        return { "image": img_str}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Visualization error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Visualization failed: {str(e)}")
+
+@app.post("/predict-with-visualization")
+async def predict_with_visualization(smiles: str = Form(...)):
+    """
+    Predict solubility and generate molecule visualization in one call.
+    
+    Returns prediction results and a base64-encoded image of the molecule.
+    """
+    try:
+        # Validate SMILES
+        is_valid, _ = validate_smiles(smiles)
+        if not is_valid:
+            raise HTTPException(status_code=422, detail=f"Invalid SMILES string: {smiles}")
+        
+        # Make prediction
+        result = prediction_service.predict_solubility(smiles)
+        
+        # Generate molecule image
+        img_str = smiles_to_base64_image(smiles)
+        if img_str is None:
+            logger.warning(f"Failed to generate molecule image for valid SMILES: {smiles}")
+        else:
+            # Add image to result
+            result["image"] = img_str
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Prediction with visualization error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process request: {str(e)}")
+
+@app.get("/sample-molecules")
+def get_sample_molecules_route():
+    """Get a list of sample molecules with varying solubility levels."""
+    return {"samples": get_sample_molecules()}
+
+
+@app.get("/model-info")
+def get_model_info():
+    """
+    Get information about the loaded model.
+    """
+    try:
+        # initialize service if not already done
+        prediction_service.initialize()
+        # get model info
+        model_info = prediction_service.get_model_info()
+        return {
+         "model_info": model_info
+        }
+    except Exception as e:
+        logger.error(f"Failed to get model info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get model info: {str(e)}")
+
+@app.post("/validate-smiles")
+def validate_smiles_route(smiles: str = Form(...)):
+    """
+    Validate a SMILES string.
+    
+    Returns whether the SMILES string is valid.
+    """
+    is_valid, mol = validate_smiles(smiles)
+    if is_valid and mol is not None:
+        return {
+            "valid": True,
+            "atom_count": mol.GetNumAtoms(),
+            "bond_count": mol.GetNumBonds(),
+            "has_aromaticity": any(atom.GetIsAromatic() for atom in mol.GetAtoms())
+            # TODO: add more properties as needed
+        }
+    return {"valid": False}
+
+
+# TODO: consider pre-loading the model on app startup instead to avoid latency from first request to prediction endpoints - @app.on_event("startup")
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    logger.info("Starting up Molecular Solubility Prediction API")
+    try:
+        # Pre-load the model to catch any issues early
+        prediction_service.initialize()
+        logger.info("Model initialized successfully on startup")
+    except Exception as e:
+        logger.error(f"Error initializing model on startup: {str(e)}")
+        # Don't fail startup, just log the error
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up resources on shutdown."""
+    logger.info("Shutting down Molecular Solubility Prediction API")
+    
+if __name__ == "__main__":
+    import uvicorn
+    import argparse
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Run the Molecular Solubility Prediction API server")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    parser.add_argument("--workers", type=int, default=1, help="Number of worker processes")
+    parser.add_argument("--log-level", type=str, default="info", 
+                       choices=["debug", "info", "warning", "error", "critical"],
+                       help="Log level")
+    
+    args = parser.parse_args()
+    
+    # Run the server
+    logger.info(f"Starting server on {args.host}:{args.port}")
+    uvicorn.run(
+        "api.main:app", 
+        host=args.host, 
+        port=args.port,
+        reload=args.reload,
+        workers=args.workers,
+        log_level=args.log_level
+    )
+</file>
+
+</files>

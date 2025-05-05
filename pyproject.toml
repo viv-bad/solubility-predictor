@@ -1,0 +1,30 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=61.0"] # Specify minimum setuptools version
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "solpred" # Choose a package name for your project
+version = "0.1.0" # Initial version
+description = "Molecular Solubility Prediction using GNNs"
+readme = "README.md"
+requires-python = ">=3.8" # Match your project's Python version requirement
+# Add other metadata like authors, license if desired
+
+# List core runtime dependencies here (subset of requirements.txt)
+# For now, keep it minimal or empty, as requirements.txt is still used.
+# You could gradually move dependencies here.
+dependencies = [
+    # "torch",
+    # "torch-geometric",
+    # "rdkit",
+    # "fastapi",
+    # "pydantic",
+    # "pydantic-settings",
+    # "uvicorn",
+    # Add other *essential* runtime deps
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]  # Look for packages in the 'src' directory

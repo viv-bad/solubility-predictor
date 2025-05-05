@@ -13,13 +13,13 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     # CORS Settings
-    ALLOW_ORIGINS: list = ["*"]
+    ALLOW_ORIGINS: list = ["*", "http://localhost:3000", "http://frontend:3000"]
     ALLOW_CREDENTIALS: bool = True
     ALLOW_METHODS: list = ["*"]
     ALLOW_HEADERS: list = ["*"]
     
     # Model Settings
-    MODEL_DIR: str = os.path.join("data", "models")
+    MODEL_DIR: str = os.path.join("models")
     MODEL_FILENAME: str = "best_model.pth"
     
     @property

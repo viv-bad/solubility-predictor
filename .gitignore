@@ -58,3 +58,5 @@ docs/_build/
 
 .DS_Store
 /data/processed
+
+solubility-predictor-webapp

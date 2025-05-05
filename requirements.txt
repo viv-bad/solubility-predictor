@@ -128,6 +128,7 @@ setuptools==80.0.0
 shellingham==1.5.4
 six==1.17.0
 sniffio==1.3.1
+-e git+ssh://git@github.com/viv-bad/solubility-predictor.git@9fe51acf6e3a227ead02fa8dddfc16aabb82956d#egg=solpred
 soupsieve==2.7
 stack-data==0.6.3
 starlette==0.46.2

@@ -6,7 +6,7 @@ import torch
 
 # Fix imports to properly access the model
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from inference import SolubilityPredictor
 from api.config import get_settings

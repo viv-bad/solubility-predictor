@@ -1,16 +1,43 @@
-version: "3"
+version: "3.8"
 
 services:
-  solubility-prediction-api:
-    build: .
+  # Backend service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    environment:
-      - PYTHONPATH=/app
+    # environment: # Remove or comment out PYTHONPATH if it was here
+    #   - PYTHONPATH=/app
+    volumes:
+      - ./models:/app/models # Mount only saved models if that's sufficient
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 40s # May need adjustment depending on model load time
+    networks:
+      - solubility-network
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./solubility-predictor-webapp # Ensure this context is correct
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NUXT_PUBLIC_API_BASE_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy # Wait for backend healthcheck to pass
+    restart: unless-stopped
+    networks:
+      - solubility-network
+
+networks:
+  solubility-network:
+    driver: bridge
