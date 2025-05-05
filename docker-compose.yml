@@ -11,7 +11,7 @@ services:
     # environment: # Remove or comment out PYTHONPATH if it was here
     #   - PYTHONPATH=/app
     volumes:
-      - ./data/models:/app/data/models # Mount only saved models if that's sufficient
+      - ./models:/app/models # Mount only saved models if that's sufficient
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

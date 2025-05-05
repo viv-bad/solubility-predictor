@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     ALLOW_HEADERS: list = ["*"]
     
     # Model Settings
-    MODEL_DIR: str = os.path.join("data")
+    MODEL_DIR: str = os.path.join("models")
     MODEL_FILENAME: str = "best_model.pth"
     
     @property
