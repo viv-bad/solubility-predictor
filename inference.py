@@ -87,16 +87,30 @@ class SolubilityPredictor:
 
         # Interpret solubility
         solubility_level = self._interpret_solubility(prediction)
-        compounds = pubchempy.get_compounds(smiles, namespace="smiles")
-        match = ""
-        if compounds:
-            match = compounds[0]
-        else:
-            match = "No compound name match found"
+
+        compound_name = "N/A" # Default value
+        try:
+            # Attempt PubChem lookup
+            compounds = pubchempy.get_compounds(smiles, namespace="smiles")
+            if compounds:
+                # Prioritize IUPAC name, fallback to first synonym if needed
+                compound_name = compounds[0].iupac_name if compounds[0].iupac_name else compounds[0].synonyms[0] if compounds[0].synonyms else "Name Lookup Failed"
+            else:
+                compound_name = "Not Found in PubChem"
+        except pubchempy.BadRequestError:
+            # Handle cases where PubChem rejects the SMILES
+            print(f"Warning: PubChem BadRequest for SMILES: {smiles}")
+            compound_name = "PubChem Lookup Failed (Bad Request)"
+        except Exception as e:
+            # Handle other potential lookup errors (network issues, etc.)
+            print(f"Warning: PubChem lookup failed for SMILES {smiles}: {e}")
+            compound_name = "PubChem Lookup Failed (Error)"
+
 
         return {
             "smiles": smiles,
-            "compound_name": match.iupac_name,
+            # "compound_name": match.iupac_name, # <-- Replace this line
+            "compound_name": compound_name,     # <-- With this line
             "predicted_solubility": prediction,
             "solubility_level": solubility_level,
             "mol_weight": mol_weight,
