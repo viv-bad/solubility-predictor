@@ -1,6 +1,7 @@
-
 # run_train.py
 # This script ensures the Python path is set correctly before running the main training code.
+
+import argparse
 
 print("Importing fix_imports to set up sys.path...")
 import fix_imports # This executes the code in fix_imports.py
@@ -10,10 +11,18 @@ print("Importing training function...")
 from src.train import train_model
 
 if __name__ == "__main__":
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description='Train a model with specified parameters.')
+    parser.add_argument('--data_path', type=str, default='./data',
+                        help='Path to the data directory (default: ./data)')
+    parser.add_argument('--epochs', type=int, default=50,
+                        help='Number of training epochs (default: 50)')
+    
+    # Parse arguments
+    args = parser.parse_args()
+    
     print("Starting training process...")
-    # Call the train_model function with appropriate parameters
-    # Ensure data paths are relative to the project root
-    data_root_path = "./data"
-    model = train_model(data_root_path, epochs=50) # Adjust epochs etc. as needed
+    # Call the train_model function with command line arguments
+    model = train_model(args.data_path, epochs=args.epochs)
     print("Training finished.")
     

@@ -15,23 +15,29 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements first for better caching (external deps)
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python external dependencies
+# Consider adding --no-cache-dir if image size is critical
+RUN pip install -r requirements.txt
 
-# Copy the application code
+# Copy the application code (including src/, pyproject.toml, api/, etc.)
 COPY . .
 
-# Create required directories
-RUN mkdir -p data/models
+# --- Add this line to install your 'solpred' package ---
+# This uses pyproject.toml to find and install the package from src/solpred
+RUN pip install .
+
+# Create required directories (if still needed, e.g., for model outputs/logs within container)
+# If models are read-only and copied in, this might not be needed.
+# RUN mkdir -p data/models # Adjust as needed
 
 # Expose the port on which the application will run
 EXPOSE 8000
 
-# Set environment variables
-ENV PYTHONPATH=/app
+# Set environment variables (PYTHONPATH should NO LONGER be needed)
+# ENV PYTHONPATH=/app # REMOVE OR COMMENT OUT
 
 # Command to run the application
-CMD ["python", "api/main.py", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "api.main", "--host", "0.0.0.0", "--port", "8000"]
