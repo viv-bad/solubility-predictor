@@ -160,7 +160,8 @@ def analyze_error_patterns(model_path, data_path, output_dir="analysis_results")
         # make preds
         batch_predictions = []
         for smiles in batch.smiles:
-            result = predictor.predict_from_smiles(smiles)
+            # Set lookup_name to False to avoid PubChem API calls during analysis
+            result = predictor.predict_from_smiles(smiles, lookup_name=False)
             batch_predictions.append(result['predicted_solubility'])
         
         predicted_values.extend(batch_predictions)
@@ -346,8 +347,8 @@ def analyze_node_importance(model_path, data_path, output_dir="analysis_results"
         if mol is None:
             continue
         
-        # Get original prediction
-        original_result = predictor.predict_from_smiles(smiles)
+        # Get original prediction (with lookup_name=False to avoid PubChem API calls)
+        original_result = predictor.predict_from_smiles(smiles, lookup_name=False)
         original_prediction = original_result['predicted_solubility']
         
         # Analyze each atom type
@@ -375,9 +376,9 @@ def analyze_node_importance(model_path, data_path, output_dir="analysis_results"
                 if check_mol is None:
                     continue
                 
-                # Get prediction for modified molecule
+                # Get prediction for modified molecule (with lookup_name=False)
                 try:
-                    modified_result = predictor.predict_from_smiles(modified_smiles)
+                    modified_result = predictor.predict_from_smiles(modified_smiles, lookup_name=False)
                     modified_prediction = modified_result['predicted_solubility']
                     
                     # Calculate importance as absolute change in prediction

@@ -40,7 +40,7 @@ class SolubilityPredictor:
 
         print(f"Model loaded from model_path")
 
-    def predict_from_smiles(self, smiles):
+    def predict_from_smiles(self, smiles, lookup_name: bool = True):
         """
         Predict solubility from a SMILES string.
 
@@ -89,28 +89,25 @@ class SolubilityPredictor:
         solubility_level = self._interpret_solubility(prediction)
 
         compound_name = "N/A" # Default value
-        try:
-            # Attempt PubChem lookup
-            compounds = pubchempy.get_compounds(smiles, namespace="smiles")
-            if compounds:
-                # Prioritize IUPAC name, fallback to first synonym if needed
-                compound_name = compounds[0].iupac_name if compounds[0].iupac_name else compounds[0].synonyms[0] if compounds[0].synonyms else "Name Lookup Failed"
-            else:
-                compound_name = "Not Found in PubChem"
-        except pubchempy.BadRequestError:
-            # Handle cases where PubChem rejects the SMILES
-            print(f"Warning: PubChem BadRequest for SMILES: {smiles}")
-            compound_name = "PubChem Lookup Failed (Bad Request)"
-        except Exception as e:
-            # Handle other potential lookup errors (network issues, etc.)
-            print(f"Warning: PubChem lookup failed for SMILES {smiles}: {e}")
-            compound_name = "PubChem Lookup Failed (Error)"
+        if lookup_name:
+            try:
+                compounds = pubchempy.get_compounds(smiles, namespace="smiles")
+                if compounds:
+                    c = compounds[0]
+                    compound_name = c.iupac_name if c.iupac_name else c.synonyms[0] if c.synonyms else "Name Lookup Failed"
+                else:
+                    compound_name = "Not Found in PubChem"
+            except pubchempy.BadRequestError:
+                print(f"Warning: PubChem BadRequest for SMILES: {smiles}")
+                compound_name = "PubChem Lookup Failed (Bad Request)"
+            except Exception as e:
+                print(f"Warning: PubChem lookup failed for SMILES {smiles}: {e}")
+                compound_name = "PubChem Lookup Failed (Error)"
 
 
         return {
             "smiles": smiles,
-            # "compound_name": match.iupac_name, # <-- Replace this line
-            "compound_name": compound_name,     # <-- With this line
+            "compound_name": compound_name,
             "predicted_solubility": prediction,
             "solubility_level": solubility_level,
             "mol_weight": mol_weight,
