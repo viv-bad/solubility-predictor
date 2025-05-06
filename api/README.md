@@ -2,6 +2,10 @@
 
 This API provides endpoints for predicting the solubility of molecules from their SMILES representations. It uses a Graph Neural Network (GNN) trained on a solubility dataset.
 
+## Live Demo
+
+**Try it now:** [https://solpred.netlify.app/](https://solpred.netlify.app/)
+
 ## Features
 
 - Predict solubility for a single molecule from SMILES string
