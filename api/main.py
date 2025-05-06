@@ -1,7 +1,10 @@
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 import sys
 import tempfile
@@ -26,6 +29,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -34,6 +38,9 @@ app = FastAPI(
     version=settings.API_VERSION,
     debug=settings.DEBUG
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Add CORS middleware to allow cross-origin requests from the frontend
 app.add_middleware(
@@ -70,7 +77,8 @@ def health_check():
         )
 
 @app.post("/predict", response_model=SolubilityPrediction)
-def predict_solubility(input_data: SmilesInput):
+@limiter.limit("5/minute") 
+def predict_solubility(request: Request, input_data: SmilesInput):
     """
     Predict solubility of a single molecule from SMILES string.
 
@@ -89,7 +97,8 @@ def predict_solubility(input_data: SmilesInput):
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 @app.post("/batch-predict", response_model=BatchPredictionResponse)
-def batch_predict(input_data: BatchSmilesInput):
+@limiter.limit("5/minute") 
+def batch_predict(request: Request, input_data: BatchSmilesInput):
     """
     Predict solubility for multiple molecules from a list of SMILES strings.
     
@@ -128,7 +137,8 @@ def batch_predict(input_data: BatchSmilesInput):
         raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
 
 @app.post("/visualize-molecule")
-async def visualize_molecule(smiles: str = Form(...)):
+@limiter.limit("5/minute") 
+async def visualize_molecule(request: Request, smiles: str = Form(...)):
     """
     Generate a visualization of a molecule from SMILES string.
 
@@ -147,7 +157,8 @@ async def visualize_molecule(smiles: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Visualization failed: {str(e)}")
 
 @app.post("/predict-with-visualization")
-async def predict_with_visualization(smiles: str = Form(...)):
+@limiter.limit("5/minute") 
+async def predict_with_visualization(request: Request, smiles: str = Form(...)):
     """
     Predict solubility and generate molecule visualization in one call.
     
@@ -178,13 +189,15 @@ async def predict_with_visualization(smiles: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Failed to process request: {str(e)}")
 
 @app.get("/sample-molecules")
-def get_sample_molecules_route():
+@limiter.limit("5/minute") 
+def get_sample_molecules_route(request: Request):
     """Get a list of sample molecules with varying solubility levels."""
     return {"samples": get_sample_molecules()}
 
 
 @app.get("/model-info")
-def get_model_info():
+@limiter.limit("5/minute") 
+def get_model_info(request: Request):
     """
     Get information about the loaded model.
     """
@@ -201,7 +214,8 @@ def get_model_info():
         raise HTTPException(status_code=500, detail=f"Failed to get model info: {str(e)}")
 
 @app.post("/validate-smiles")
-def validate_smiles_route(smiles: str = Form(...)):
+@limiter.limit("5/second") 
+def validate_smiles_route(request: Request, smiles: str = Form(...)):
     """
     Validate a SMILES string.
     
