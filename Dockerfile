@@ -1,43 +1,39 @@
-# Python 3.11 base image
-FROM python:3.11-slim
+# Use Python 3.9 for better compatibility with ML libraries
+FROM python:3.9-slim
 
-# Set working directory
-WORKDIR /app
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    libboost-all-dev \
-    # Add X11 libraries needed for RDKit's Draw functionality
+# Install system dependencies (minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxext6 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching (external deps)
-COPY requirements.txt .
+WORKDIR /app
 
-# Install Python external dependencies
-# Consider adding --no-cache-dir if image size is critical
-RUN pip install -r requirements.txt
+# Copy and install core requirements first
+COPY requirements-core.txt .
+RUN pip install --no-cache-dir -r requirements-core.txt
 
-# Copy the application code (including src/, pyproject.toml, api/, etc.)
+# Copy and install ML requirements
+COPY requirements-ml.txt .
+# Add a longer timeout for ML dependencies
+RUN pip install --no-cache-dir --timeout 300 -r requirements-ml.txt
+
+# Copy the rest of the application
 COPY . .
 
-# --- Add this line to install your 'solpred' package ---
-# This uses pyproject.toml to find and install the package from src/solpred
+# Install the local package
 RUN pip install .
 
-# Create required directories (if still needed, e.g., for model outputs/logs within container)
-# If models are read-only and copied in, this might not be needed.
-# RUN mkdir -p data/models # Adjust as needed
+# Create model directory if it doesn't exist
+RUN mkdir -p models
 
-# Expose the port on which the application will run
-EXPOSE 8000
+# Expose the port 
+EXPOSE ${PORT}
 
-# Set environment variables (PYTHONPATH should NO LONGER be needed)
-# ENV PYTHONPATH=/app # REMOVE OR COMMENT OUT
-
-# Command to run the application
-CMD ["python", "-m", "api.main", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application with uvicorn
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "75"]
