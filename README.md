@@ -20,6 +20,10 @@ The project includes:
 
 This repository contains the backend ML model and API service. A separate repository likely holds the corresponding frontend web application (Nuxt.js/Vue.js).
 
+## Live Demo
+
+**Try it now:** [https://solpred.netlify.app/](https://solpred.netlify.app/)
+
 ## Features
 
 ### Core ML & Analysis
