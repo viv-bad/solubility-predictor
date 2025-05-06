@@ -8,32 +8,32 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    # environment: # Remove or comment out PYTHONPATH if it was here
-    #   - PYTHONPATH=/app
+    environment:
+      - PYTHONPATH=/app
     volumes:
-      - ./models:/app/models # Mount only saved models if that's sufficient
+      - ./data:/app/data
+      - ./models:/app/models
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s # May need adjustment depending on model load time
+      start_period: 40s
     networks:
       - solubility-network
 
   # Frontend service
   frontend:
     build:
-      context: ./solubility-predictor-webapp # Ensure this context is correct
+      context: ./solubility-predictor-webapp
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
-      - NUXT_PUBLIC_API_BASE_URL=http://backend:8000
+      - NUXT_PUBLIC_API_BASE_URL=http://localhost:8000
     depends_on:
-      backend:
-        condition: service_healthy # Wait for backend healthcheck to pass
+      - backend
     restart: unless-stopped
     networks:
       - solubility-network
